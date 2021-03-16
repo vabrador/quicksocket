@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Webviz-Server Test HTML Client</title>
+  <script>
+    const SESSION_ADDRESS = "/new_rtc_session";
+
+    let peer = new RTCPeerConnection(null);
+
+    peer.createOffer().then(offer => {
+      return peer.setLocalDescription(offer);
+    }).then(() => {
+      var rtcRequest = new XMLHttpRequest();
+      rtcRequest.open("POST", SESSION_ADDRESS);
+      rtcRequest.onload = () => {
+        if (rtcRequest.status == 200) {
+          // TODO: What is status 200 exactly? Anyway, it seems like it's a good thing.
+          var rtcResponse = JSON.parse(rtcRequest.responseTest);
+          peer.setRemoteDescription(new RTCSessionDescription(rtcResponse.answer))
+          .then(() => {
+            var iceCandidate = new RTCIceCandidate(rtcResponse.candidate);
+            peer.addIceCandidate(candidate).then(() => {
+              console.log("Success adding ICE candidate.");
+            }).catch(err => {
+              console.log(`Error adding ICE candidate: ${err}`);
+            });
+          }).catch(err => {
+            console.log(`Error setting remove description: ${err}`);
+          })
+        } else {
+          console.log(`Unexpected request status ${rtcRequest.status}.`);
+        }
+      };
+      rtcRequest.send(peer.localDescription.sdp);
+    }).catch(err => {
+      console.log(`Error during createOffer: ${err}`);
+    });
+  </script>
+</head>
+<body>
+</body>
+</html>

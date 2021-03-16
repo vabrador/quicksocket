@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Webviz-Server Test HTML Client</title>
+  <script>
+    const url = "ws://127.0.0.1:10202"
+    let webSocket = new WebSocket(url);
+    let isConnected = false;
+
+    webSocket.onopen = () => {
+      console.log("Connected to the websocket server.");
+      isConnected = true;
+    }
+
+    webSocket.onmessage = msg => {
+      console.log("Received message from the websocket server.");
+      console.table(msg);
+    };
+    
+    // A connection could not be made
+    webSocket.onerror = () => {
+      console.log("The connection encountered an error.");
+    }
+
+    // A connection was closed
+    webSocket.onclose = ev => {
+      isConnected = false;
+      webSocket.onopen = null;
+      webSocket.onmessage = null;
+      webSocket.onclose = null;
+      webSocket.onerror = null;
+      console.log("The connection to the websocket server was closed.");
+      webSocket = null;
+    }
+
+    setInterval(() => {
+      if (isConnected) {
+        webSocket.send("Hello from the client!");
+      }
+    }, 1000);
+
+  </script>
+</head>
+<body>
+</body>
+</html>

@@ -1,0 +1,27 @@
+[package]
+name = "webviz_server"
+version = "0.1.0"
+authors = ["Nicholas Benson <nickjbenson@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "webviz_server_rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Python-Rust binding -- this library aims to compile into a native Python module.
+pyo3 = "0.13.2"
+# General dependencies.
+lazy_static = "1.4.0"
+log = "0.4.14"
+env_logger = "0.8.3"
+futures-util = { version = "0.3.13", default-features = false, features = ["async-await", "sink", "std"] }
+# Tokio for async task management and hyper to run a basic http server.
+tokio = { version = "1.3.0", features = ["full"] }
+hyper = { version = "0.14.4", features = ["full"] }
+# Experimenting with transfer mechanisms to the browser with these.
+webrtc-unreliable = "0.5.0"
+tokio-tungstenite = "0.14.0"
+tungstenite = { version = "0.13.0", default-features = false }
