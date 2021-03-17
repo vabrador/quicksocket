@@ -1,73 +1,54 @@
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use std::thread;
+use tokio::sync::{broadcast, mpsc, watch};
 
-// TODO MIGRATE
-pub mod state;
-// pub mod consumer_state; // TODO MIGRATE
-// TODO MIGRATE
+use consumer_state::weakly_record_error;
 
+pub mod consumer_state;
 mod tokio_server;
 
 pub fn start() -> Result<(), ()> {
-    // Create the broadcaster that will send messages provided by the server-side consumer to all connected websocket clients.
-    // The broadcaster is stored statically and is accessed in API calls when the consumer wants to send messages through the server to any connected websocket clients.
-    let (ser_msg_multi_tx, _) = broadcast::channel::<Vec<u8>>(16);
+  // Server thread-alive channel.
+  let (ser_thread_alive_tokio_tx, ser_thread_alive_consumer_rx) = {
+    watch::channel::<bool>(false)
+  };
 
-    // OH GOD IS THIS OK?
-    let (cli_msg_store_multi_tx, cli_msg_store_single_rx) = mpsc::channel::<Vec<u8>>(16);
+  // Server message broadcast channel (consumer -> server -> client(s)).
+  let (ser_msg_tokio_tx, _) = {
+    broadcast::channel::<Vec<Vec<u8>>>(16)
+  };
+  // Both the consumer thread(s) and the tokio thread(s) will have their own copies of the transmitter.
+  // The consumer thread uses its copy to send() messages. The tokio thread uses its copy to create per-connection receivers.
+  let ser_msg_consumer_tx = ser_msg_tokio_tx.clone();
 
-    // // // // Try to get a writeable lock on the server and initialize the server state.
-    // // // {
-    // // //   let server_state = state::try_get_writeable_server_state("Launch server and assign new server state");
-    // // //   if server_state.is_none() { return Err(()); }
-    // // //   let mut server_state = server_state.unwrap();
-  
-    // // //   // Create a fresh server state and start the server thread.
-    // // //   let new_server_state = state::ServerState {
-    // // //     is_shutdown_requested:    false,
-    // // //     is_thread_alive:          false,
-    // // //     ser_msg_multi_tx:         ser_msg_multi_tx,
-    // // //     cli_msg_store_single_rx:  cli_msg_store_single_rx,
-    // // //     cli_msg_store_multi_tx:   cli_msg_store_multi_tx
-    // // //   };
-    // // //   // // // let new_state = ServerState::new(thread_handle);
-    // // //   *server_state = Some(new_server_state);
+  // Client message channel.
+  let (cli_msg_store_tokio_tx, cli_msg_store_consumer_rx) = {
+    mpsc::channel::<Vec<u8>>(16)
+  };
 
-    // // //   // server_state dropped
-    // // // }
+  // Shutdown channel.
+  let (ser_req_shutdown_consumer_tx, ser_req_shutdown_tokio_rx) = {
+    watch::channel::<bool>(false)
+  };
 
-    // // // // Launch the tokio thread.
-    // // // let _thread_handle = thread::spawn(|| {
-    // // //   server_thread_main()
-    // // // });
+  // Set the consumer thread(s) state object with all its relevant comms channels.
+  let consumer_state_obj = consumer_state::ConsumerState {
+    ser_thread_alive_rx: ser_thread_alive_consumer_rx,
+    ser_msg_tx: ser_msg_consumer_tx,
+    cli_msg_rx: cli_msg_store_consumer_rx,
+    ser_req_shutdown_tx: ser_req_shutdown_consumer_tx
+  };
+  consumer_state::set_consumer_state(consumer_state_obj).unwrap_or_else(|_| {
+    weakly_record_error("Failed to set consumer state! Server is not in a valid state.".to_string())
+  });
 
-    Ok(())
+  // Launch the tokio thread, passing ownership of all the tokio-side channels.
+  // Launch the tokio thread.
+  let _thread_handle = thread::spawn(|| tokio_server::main(
+    ser_thread_alive_tokio_tx,
+    ser_msg_tokio_tx,
+    cli_msg_store_tokio_tx,
+    ser_req_shutdown_tokio_rx
+  ));
+
+  Ok(())
 }
-
-
-// TODO: TokioState doesn't have to exist, because all the necessary state can just be owned by the actual tokio thread!
-// TODO: TokioState doesn't have to exist, because all the necessary state can just be owned by the actual tokio thread!
-// TODO: TokioState doesn't have to exist, because all the necessary state can just be owned by the actual tokio thread!
-
-// TokioState
-// ----------
-//
-/// This struct is async-guarded, intended for source data to clone per-connection.
-///
-/// Each connection is expected to own its own data, so don't try to access this struct directly inside a connection handler. Otherwise the connections are going to fight for write access.
-pub struct TokioState {
-  /// Main tokio thread transmitter for whether the thread is alive.
-  pub ser_thread_alive_tx: watch::Sender<bool>,
-
-  /// Tokio thread(s) clone of the server message transmitter, used to subscribe new receivers for any new connections.
-  ///
-  /// This is a clone of the Sender owned by the ConsumerState struct.
-  pub ser_msg_multi_tx: broadcast::Sender<Vec<u8>>,
-
-  /// Tokio thread(s) transmitter (to clone per-connection) reporting back messages from any given connected client.
-  pub cli_msg_store_multi_tx: mpsc::Sender<Vec<u8>>,
-
-  /// Tokio thread(s) receiver for stopping tasks when shutdown is requested.
-  pub ser_req_shutdown_rx: oneshot::Receiver::<()>
-}
-// TODO: TokioState doesn't have to exist, because all the necessary state can just be owned by the actual tokio thread!
-

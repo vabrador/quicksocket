@@ -1,110 +1,81 @@
-use std::{net::SocketAddr, time::Duration};
-use futures_util::{StreamExt, stream::{SplitSink, SplitStream}};
-use tokio::{net::{TcpListener, TcpStream}, sync::{broadcast, mpsc, oneshot, watch}};
+use std::{net::SocketAddr};
+use futures_util::{SinkExt, StreamExt, stream::{SplitSink, SplitStream}};
+use tokio::{net::{TcpListener, TcpStream}, sync::{broadcast, mpsc, watch}};
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
 /// Main thread loop for running the websocket server.
 ///
-/// This function launches a tokio runtime to handle most server functions. The function will return after the tokio runtime exits. See server_async_main() for more details on the tasks the server actually performs.
-pub fn server_thread_main() -> Result<String, String> {
+/// This function launches a tokio runtime to handle most server functions. The function will return after the tokio runtime exits.
+pub fn main(
+  ser_thread_alive_tx: watch::Sender::<bool>,
+  ser_msg_tx: broadcast::Sender::<Vec<Vec<u8>>>,
+  cli_msg_tx: mpsc::Sender::<Vec<u8>>,
+  mut ser_req_shutdown_rx: watch::Receiver::<bool>
+) -> Result<String, String> {
   // Start the tokio runtime for the server and launch the top-level server task.
   println!("Server launching runtime.");
   let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
-  tokio_runtime.block_on(server_async_main());
-  
-  println!("Server shutting down.");
-  Ok("Server shut-down successfully.".to_string())
-}
+  tokio_runtime.block_on(async {
 
-/// The async function that handles the actual server work, run by the tokio runtime from the main server_thread() function.
-///
-/// Through this function, the server handles websocket requests and periodically checks for external signals (such as a shutdown signal).
-async fn server_async_main() {
-  // Write that the server is alive.
-  println!("Server writing alive = true.");
-  state::try_write_server_state("Write server thread alive = true", |state| {
-    state.is_thread_alive = true;
-  });
+    // Top-level tokio task
+    // --------------------
+    //
+    let res = ser_thread_alive_tx.send(true);
+    if res.is_err() { println!("Failed to set server alive."); return; }
 
-  // Bind to websocket on localhost port 10202.
-  let addr = "127.0.0.1:10202";
-  let listener = TcpListener::bind(&addr).await.expect("Failed to bind to address");
-  println!("Listening on: {}", addr);
+    // Bind to websocket on localhost port 10202.
+    let addr = "127.0.0.1:10202";
+    let listener = TcpListener::bind(&addr).await;
+    if listener.is_err() { println!("Failed to bind TcpListener."); return; }
+    let listener = listener.unwrap();
+    //.expect("Failed to bind to address")
+    println!("Listening on: {}", addr);
 
-  // Single-producer, many-consumer channel.
-  let (shutdown_tx, shutdown_rx) = watch::channel::<bool>(false);
-
-  // Launch tasks.
-  // -------------
-  //
-  let websocket_task = tokio::spawn(
-    listen_for_websocket_connections(
-      listener,
-      shutdown_rx.clone()
-    )
-  );
-  let shutdown_task = tokio::spawn(
-    server_periodically_check_shutdown_signal(shutdown_tx)
-  );
-  
-  // Join tasks for shutdown.
-  // ------------------------
-  //
-  if shutdown_task.await.is_err() {
-    println!("[server_async_main] shutdown_task errored while awaiting :(");
-  }
-  if websocket_task.await.is_err() {
-    println!("[server_async_main] websocket_task errored while awaiting :(");
-  }
-
-  println!("Server writing alive = false.");
-  state::try_write_server_state("Write server thread alive = false", |state| {
-    state.is_thread_alive = false;
-  });
-}
-
-async fn listen_for_websocket_connections(
-  listener: TcpListener,
-  mut exit_rx: watch::Receiver<bool>
-) {
-  let accept_conn = listener.accept();
-  tokio::pin!(accept_conn);
-
-  loop {
-    // Await either a valid connection or the shutdown signal, whichever occurs first.
-    tokio::select! {
+    // Listen for connections until shutdown.
+    // -----------------------------------
+    //
+    let accept_conn = listener.accept();
+    tokio::pin!(accept_conn);
+    // Loop, responding to whichever future finishes first. (We break on a shutdown signal.)
+    loop { tokio::select! {
       // Valid connection. Launch task to handle the connection for its lifetime.
       Ok((stream, _)) = &mut accept_conn => {
         let peer = stream.peer_addr().expect("Connected streams should have a peer address");
         println!("[listen_for_websocket_connections] Peer address: {}", peer);
 
         // Each connection receives a reciever for messages to forward from the server, and a transmitter to forward client messages back to the server.
-        let opt_chs = state::try_read_server_state("Handle connection; get server/client rx/tx", |state| {
-          (state.ser_msg_multi_tx.subscribe(), state.cli_msg_store_multi_tx.clone())
-        });
-        if opt_chs.is_none() { println!("[ERROR] Server state is poisoned! Can't handle comms."); }
-        let (ser_msg_broadcast_rx, cli_msg_store_tx) = opt_chs.unwrap();
+        let (ser_msg_broadcast_rx, cli_msg_store_tx) = (
+          ser_msg_tx.subscribe(), cli_msg_tx.clone()
+        );
 
-        // Spawn the connection handler task, living for the duration of the connection.
-        tokio::spawn(handle_connection(peer, stream, ser_msg_broadcast_rx, cli_msg_store_tx));
+        // Spawn a connection handler task, which will live for the duration of the connection.
+        tokio::spawn(handle_connection(peer, stream, ser_msg_broadcast_rx, cli_msg_store_tx, ser_req_shutdown_rx.clone()));
       }
 
       // Receive an exit signal and shutdown.
-      _ = exit_rx.changed() => {
-        if *exit_rx.borrow() {
+      _ = ser_req_shutdown_rx.changed() => {
+        if *ser_req_shutdown_rx.borrow() {
           println!("[listen_for_websocket_connections] Received shutdown signal.");
           break;
         }
       }
-    } // tokio::select!
-  } // loop
+    }} // tokio::select! // loop
+
+    // Shut down.
+    println!("Server writing alive = false.");
+    ser_thread_alive_tx.send(false).expect("Failed to set server thread alive to false.");
+  });
+  
+  println!("Server shutting down.");
+  Ok("Server shut-down successfully.".to_string())
 }
 
 async fn handle_connection(
   _peer: SocketAddr,
   stream: TcpStream,
-  server_msg_rx: broadcast::Receiver<Vec<u8>>,
-  client_msg_tx: mpsc::Sender<Vec<u8>>
+  server_msg_rx: broadcast::Receiver<Vec<Vec<u8>>>,
+  client_msg_tx: mpsc::Sender<Vec<u8>>,
+  ser_req_shutdown_rx: watch::Receiver::<bool>
 ) {
   let addr = stream.peer_addr().expect("Connected streams should have a peer address");
   // println!("[Accept connection] Peer address: {}", addr);
@@ -119,59 +90,82 @@ async fn handle_connection(
   let (ws_client_write, ws_client_read) = ws_stream.split();
 
   // Launch a task to handle sending messages from the server-side library consumer to the websocket client over ws_write.
-  tokio::spawn(send_ws_client_messages(server_msg_rx, ws_client_write));
+  tokio::spawn(send_ws_client_messages(
+    server_msg_rx, ws_client_write, ser_req_shutdown_rx.clone()
+  ));
 
   // Launch a task to handle receiving message from the websocket client over ws_read and buffering them for the server-side library consumer to drain and handle later.
-  tokio::spawn(recv_ws_client_messages(client_msg_tx, ws_client_read));
+  tokio::spawn(recv_ws_client_messages(
+    client_msg_tx, ws_client_read, ser_req_shutdown_rx
+  ));
 
-  // Archived: For debugging purposes, this configuration would create a simple message forwarder for the lifetime of the connection (bouncing messages from the websocket client back to them).
+  // Archived: For debugging purposes, we can create a simple message forwarder for the lifetime of the connection (bouncing messages from the websocket client back to them).
   // let (write, read) = ws_stream.split();
   // read.forward(write).await.expect("Failed to forward message");
 }
 
-async fn send_ws_client_messages(server_msg_rx: broadcast::Receiver<Vec<u8>>, ws_client_write: SplitSink<WebSocketStream<TcpStream>, Message>) {
-  // TODO: IMPLEMENTME
-  compile_error!("NYI");
-}
-
-async fn recv_ws_client_messages(client_msg_tx: mpsc::Sender<Vec<u8>>, ws_client_read: SplitStream<WebSocketStream<TcpStream>>) {
-  // TODO: IMPLEMENTME
-  compile_error!("NYI");
-}
-
-// // // async fn listen_for_consumer_messages(mut msg_rx: mpsc::Receiver<Vec<u8>>, mut exit_rx: watch::Receiver<bool>) {
-// // //   loop {
-// // //     tokio::select! {
-// // //       maybe_msg = msg_rx.recv() => {
-// // //         // Launch the task to handle the message.
-// // //         maybe_msg.map(|msg| tokio::spawn(handle_msg(msg)));
-// // //       }
-// // //       _ = exit_rx.changed() => {
-// // //         if *exit_rx.borrow() {
-// // //           println!("[listen_for_consumer_messages] Received shutdown signal.");
-// // //         }
-// // //       }
-// // //     }
-// // //   }
-// // // }
-
-// // // async fn handle_msg(msg_bytes: Vec<u8>) {
-// // //   println!("Received message of {} bytes in length. TODO: Send the message to the websocket client!", msg_bytes.len())
-// // // }
-
-async fn server_periodically_check_shutdown_signal(shutdown_tx: watch::Sender<bool>) {
-  loop {
-      tokio::time::sleep(Duration::from_millis(100)).await;
-
-      if is_shutdown_requested() {
-        // Send shutdown signal to other looping tasks in the runtime.
-        let res = shutdown_tx.send(true);
-        if res.is_err() {
-          println!("[server_periodically_check_shutdown_signal] Error reporting shutdown signal through shutdown_tx! {:?}", res.err());
+async fn send_ws_client_messages(
+  mut server_msg_rx: broadcast::Receiver<Vec<Vec<u8>>>,
+  mut ws_client_write: SplitSink<WebSocketStream<TcpStream>, Message>,
+  mut ser_req_shutdown_rx: watch::Receiver::<bool>
+) {
+  loop { tokio::select! {
+    // Receive server messages and forward them to connected clients.
+    recv_res = server_msg_rx.recv() => { match recv_res {
+      Ok(msgs) => {
+        for msg in msgs {
+          let res = ws_client_write.feed(Message::Binary(msg)).await;
+          if res.is_err() { println!("[tokio_server.rs] Failed to feed ws_client_write"); }
         }
+        let res = ws_client_write.flush().await;
+        if res.is_err() { println!("[tokio_server.rs] Failed to flush ws_client_write"); }
+      }
+      Err(err) => {
+        println!("[send_ws_client_messages] Error sending msg to WS client: {:?}", err);
+      }
+    }}
 
-        // Break and exit.
+    // Receive an exit signal and shutdown.
+    _ = ser_req_shutdown_rx.changed() => {
+      if *ser_req_shutdown_rx.borrow() {
+        println!("[send_ws_client_messages] Received shutdown signal.");
         break;
       }
-  }
+    }
+  }}
+}
+
+async fn recv_ws_client_messages(
+  client_msg_tx: mpsc::Sender<Vec<u8>>,
+  mut ws_client_read: SplitStream<WebSocketStream<TcpStream>>,
+  mut ser_req_shutdown_rx: watch::Receiver::<bool>
+) {
+  // if let Some(Ok(foo)) = ws_client_read.next().await {
+  //   foo.into_data()
+  // }
+
+  loop { tokio::select! {
+    // Receive messages from connected clients and forward them to client message buffer.
+    read_res = ws_client_read.next() => { match read_res {
+      Some(Ok(msg)) => {
+        let res = client_msg_tx.send(msg.into_data()).await;
+        if res.is_err() { println!("Failed to send client message to client msg buffer"); }
+      }
+      Some(Err(err)) => {
+        println!("[send_ws_client_messages] Error sending msg to WS client: {:?}", err);
+      }
+      None => {
+        println!("[send_ws_client_messages] None received from ws_client_read.next(), connection stream must be closed.");
+        break;
+      }
+    }}
+
+    // Receive an exit signal and shutdown.
+    _ = ser_req_shutdown_rx.changed() => {
+      if *ser_req_shutdown_rx.borrow() {
+        println!("[send_ws_client_messages] Received shutdown signal.");
+        break;
+      }
+    }
+  }}
 }
