@@ -7,6 +7,7 @@
     const url = "ws://127.0.0.1:10202"
     let webSocket = new WebSocket(url);
     let isConnected = false;
+    window.messageCount = 0;
 
     webSocket.onopen = () => {
       console.log("Connected to the websocket server.");
@@ -14,8 +15,11 @@
     }
 
     webSocket.onmessage = msg => {
-      console.log("Received message from the websocket server.");
-      console.table(msg);
+      if (window.messageCount < 10) {
+        console.log(`Received message from the websocket server, message index: ${window.messageCount}`);
+        console.table(msg);
+        window.messageCount += 1;
+      }
     };
     
     // A connection could not be made
@@ -34,11 +38,11 @@
       webSocket = null;
     }
 
-    setInterval(() => {
-      if (isConnected) {
-        webSocket.send("Hello from the client!");
-      }
-    }, 1000);
+    // setInterval(() => {
+    //   if (isConnected) {
+    //     webSocket.send("Hello from the client!");
+    //   }
+    // }, 1000);
 
   </script>
 </head>

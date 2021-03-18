@@ -1,11 +1,8 @@
 
 
-You might need to activate your virtualenv to build targeting the correct version of Python:
-```
-source ~/dev/proj/leap/keras-hannd/env/Scripts/activate
-```
+If you're targeting a specific python version, you can set `PYTHON_SYS_EXECUTABLE` to the python executable in your machine with that version. 
 
-Or (and?) you need to at least set the proper sys executable flag:
-```
+e.g., on Windows via Git Bash:
+```sh
 PYTHON_SYS_EXECUTABLE=/c/Users/nickj/dev/proj/leap/keras-hannd/env/Scripts/python cargo build --release
 ```

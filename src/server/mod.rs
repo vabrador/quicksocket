@@ -14,7 +14,7 @@ pub fn start() -> Result<(), ()> {
 
   // Server message broadcast channel (consumer -> server -> client(s)).
   let (ser_msg_tokio_tx, _) = {
-    broadcast::channel::<Vec<Vec<u8>>>(16)
+    broadcast::channel::<Vec<tungstenite::Message>>(16)
   };
   // Both the consumer thread(s) and the tokio thread(s) will have their own copies of the transmitter.
   // The consumer thread uses its copy to send() messages. The tokio thread uses its copy to create per-connection receivers.
@@ -22,7 +22,7 @@ pub fn start() -> Result<(), ()> {
 
   // Client message channel.
   let (cli_msg_store_tokio_tx, cli_msg_store_consumer_rx) = {
-    mpsc::channel::<Vec<u8>>(16)
+    mpsc::channel::<tungstenite::Message>(16)
   };
 
   // Shutdown channel.

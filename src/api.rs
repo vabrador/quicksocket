@@ -5,6 +5,7 @@
 
 use futures_util::FutureExt;
 use pyo3::{prelude::*, wrap_pyfunction};
+use tungstenite::Message as WsMessage;
 
 use crate::server::{self, consumer_state::{self, weakly_record_error}};
 
@@ -47,13 +48,47 @@ pub fn get_last_error_string() -> Option<String> {
     consumer_state::try_get_last_error()
 }
 
+/// Valid message payloads in the list of messages to provide to try_send_message consist of strings (text messages) and bytes (binary messages).
+///
+/// Passing any other type within the list of objects will raise an exception.
+#[derive(FromPyObject)]
+pub enum MessagePayload {
+    #[pyo3(transparent, annotation = "str")]
+    Text(String),
+    #[pyo3(transparent, annotation = "bytes")]
+    Binary(Vec<u8>)
+}
+impl IntoPy<PyObject> for MessagePayload {
+    fn into_py(self, py: Python) -> PyObject {
+        match self {
+            MessagePayload::Text(text) => {
+                pyo3::types::PyUnicode::new(py, text.as_str()).into()
+            }
+            MessagePayload::Binary(bytes) => {
+                pyo3::types::PyBytes::new(py, &bytes).into()
+            }
+        }
+    }
+    // fn to_object(&self, py: Python) -> PyObject {
+    //     match self {
+    //         Text(text) => { Py}
+    //     }
+    // }
+}
+
 /// Send messages to all connected clients. The socket stream is flushed after buffering each message in the argument list[bytes], so it's better to call this once per 'update,' rather than calling this method multiple times if multiple messages are all available to be sent.
 ///
 /// Will return false if there are not currently any active subscribers (websocket clients), indicating no data was sent. False may also be returned if there was an error trying to access the broadcast channel in the first place (i.e. thread contention to access it).
 ///
 /// A return value of true does not guarantee all websocket clients received the message, as the tokio tasks for forwarding the messages to the clients must be able to receive the broadcast messages to forward them, which is subject to thread/task contention.
 #[pyfunction]
-pub fn try_send_message_bytes(messages: Vec<Vec<u8>>) -> bool {
+pub fn try_send_messages(messages: Vec<MessagePayload>) -> PyResult<()> {
+    // Create a Vec<WsMessage> out of the Vec<MessagePayload> so the backend is just working with the tungstenite WebSocket lib types.
+    let messages: Vec<tungstenite::Message> = messages.into_iter().map(|msg| { match msg {
+        MessagePayload::Text(text)   => { tungstenite::Message::Text(text) }
+        MessagePayload::Binary(bytes) => { tungstenite::Message::Binary(bytes) }
+    }}).collect();
+
     let send_res = consumer_state::read("Send message bytes", |state| {
         // Send!
         state.ser_msg_tx.send(messages)
@@ -61,19 +96,21 @@ pub fn try_send_message_bytes(messages: Vec<Vec<u8>>) -> bool {
     // Check whether, and precisely how, we failed to send.
     if send_res.is_none() || send_res.as_ref().unwrap().is_err() {
         let mut details = "Error reading server state for transmitter".to_string();
-        if send_res.is_some() {
-            details = format!("{:?}", send_res.unwrap().err());
-        }
-        weakly_record_error(format!("Failed to send message. Details: {}", details));
-        return false;
+        // if send_res.is_some() {
+        //     details = format!("{:?}", send_res.unwrap().err());return Err(pyo3::exceptions::PyBaseException::new_err(format!("Failed to send message. Details: {}", details)));
+        // }
+        // For now, only return an error if the send fails unrelated to the number of receivers, because we simply expect the message to go nowhere if there are no connected clients.
+
+        // weakly_record_error(format!("Failed to send message. Details: {}", details));
+        // return Err(pyo3::exceptions::PyBaseException::new_err(format!("Failed to send message. Details: {}", details)));
     }
-    true
+
+    Ok(())
 }
-// pub fn send_message(msg: HashMap<String, HashMap<String, &PyAny>>) -> bool {
 
 /// Drains all messages pending from all clients and returns them as a list[bytes]. Note that clients are not distinguished, so clients will have to self-identify in their messages, or the library will need to change to return messages per-client or bundled with client connection info.
 #[pyfunction]
-pub fn drain_client_message_bytes() -> Vec<Vec<u8>> {
+pub fn drain_client_message_bytes() -> Vec<MessagePayload> {
     let drained_messages = consumer_state::write("Drain client messages", |state| {
         let mut messages = vec![];
 
@@ -81,7 +118,16 @@ pub fn drain_client_message_bytes() -> Vec<Vec<u8>> {
         // Details: https://github.com/tokio-rs/tokio/issues/3350
         // TODO: May look into using 'flume', with some tokio-based sync primitive on the tokio task side.
         while let Some(Some(cli_msg)) = state.cli_msg_rx.recv().now_or_never() {
-            messages.push(cli_msg);
+            // Convert the message into the python-convertible MessagePayload type.
+            // For now, we ignore the ping/pong and Close websocket messages.
+            let converted_msg = match cli_msg {
+                WsMessage::Text(text)    => { Some(MessagePayload::Text(text)) }
+                WsMessage::Binary(bytes) => { Some(MessagePayload::Binary(bytes)) }
+                WsMessage::Ping(_)       => { None }
+                WsMessage::Pong(_)       => { None }
+                WsMessage::Close(_)      => { None }
+            };
+            if converted_msg.is_some() { messages.push(converted_msg.unwrap()); }
         }
 
         messages
@@ -101,7 +147,7 @@ fn webviz_server_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(is_server_running,          m)?)?;
     m.add_function(wrap_pyfunction!(shutdown_server,            m)?)?;
     m.add_function(wrap_pyfunction!(get_last_error_string,      m)?)?;
-    m.add_function(wrap_pyfunction!(try_send_message_bytes,     m)?)?;
+    m.add_function(wrap_pyfunction!(try_send_messages,          m)?)?;
     m.add_function(wrap_pyfunction!(drain_client_message_bytes, m)?)?;
 
     Ok(())

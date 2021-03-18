@@ -8,8 +8,8 @@ use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 /// This function launches a tokio runtime to handle most server functions. The function will return after the tokio runtime exits.
 pub fn main(
   ser_thread_alive_tx: watch::Sender::<bool>,
-  ser_msg_tx: broadcast::Sender::<Vec<Vec<u8>>>,
-  cli_msg_tx: mpsc::Sender::<Vec<u8>>,
+  ser_msg_tx: broadcast::Sender::<Vec<tungstenite::Message>>,
+  cli_msg_tx: mpsc::Sender::<tungstenite::Message>,
   mut ser_req_shutdown_rx: watch::Receiver::<bool>
 ) -> Result<String, String> {
   // Start the tokio runtime for the server and launch the top-level server task.
@@ -34,32 +34,35 @@ pub fn main(
     // Listen for connections until shutdown.
     // -----------------------------------
     //
-    let accept_conn = listener.accept();
-    tokio::pin!(accept_conn);
     // Loop, responding to whichever future finishes first. (We break on a shutdown signal.)
-    loop { tokio::select! {
-      // Valid connection. Launch task to handle the connection for its lifetime.
-      Ok((stream, _)) = &mut accept_conn => {
-        let peer = stream.peer_addr().expect("Connected streams should have a peer address");
-        println!("[listen_for_websocket_connections] Peer address: {}", peer);
+    loop {
+      let accept_conn = listener.accept();
+      tokio::pin!(accept_conn);
 
-        // Each connection receives a reciever for messages to forward from the server, and a transmitter to forward client messages back to the server.
-        let (ser_msg_broadcast_rx, cli_msg_store_tx) = (
-          ser_msg_tx.subscribe(), cli_msg_tx.clone()
-        );
+      tokio::select! {
+        // Valid connection. Launch task to handle the connection for its lifetime.
+        Ok((stream, _)) = &mut accept_conn => {
+          let peer = stream.peer_addr().expect("Connected streams should have a peer address");
+          println!("[listen_for_websocket_connections] Peer address: {}", peer);
 
-        // Spawn a connection handler task, which will live for the duration of the connection.
-        tokio::spawn(handle_connection(peer, stream, ser_msg_broadcast_rx, cli_msg_store_tx, ser_req_shutdown_rx.clone()));
-      }
+          // Each connection receives a reciever for messages to forward from the server, and a transmitter to forward client messages back to the server.
+          let (ser_msg_broadcast_rx, cli_msg_store_tx) = (
+            ser_msg_tx.subscribe(), cli_msg_tx.clone()
+          );
 
-      // Receive an exit signal and shutdown.
-      _ = ser_req_shutdown_rx.changed() => {
-        if *ser_req_shutdown_rx.borrow() {
-          println!("[listen_for_websocket_connections] Received shutdown signal.");
-          break;
+          // Spawn a connection handler task, which will live for the duration of the connection.
+          tokio::spawn(handle_connection(peer, stream, ser_msg_broadcast_rx, cli_msg_store_tx, ser_req_shutdown_rx.clone()));
         }
-      }
-    }} // tokio::select! // loop
+
+        // Receive an exit signal and shutdown.
+        _ = ser_req_shutdown_rx.changed() => {
+          if *ser_req_shutdown_rx.borrow() {
+            println!("[listen_for_websocket_connections] Received shutdown signal.");
+            break;
+          }
+        }
+      } // tokio::select!
+    } // loop
 
     // Shut down.
     println!("Server writing alive = false.");
@@ -73,18 +76,22 @@ pub fn main(
 async fn handle_connection(
   _peer: SocketAddr,
   stream: TcpStream,
-  server_msg_rx: broadcast::Receiver<Vec<Vec<u8>>>,
-  client_msg_tx: mpsc::Sender<Vec<u8>>,
+  server_msg_rx: broadcast::Receiver<Vec<tungstenite::Message>>,
+  client_msg_tx: mpsc::Sender<tungstenite::Message>,
   ser_req_shutdown_rx: watch::Receiver::<bool>
 ) {
-  let addr = stream.peer_addr().expect("Connected streams should have a peer address");
-  // println!("[Accept connection] Peer address: {}", addr);
+  let addr = stream.peer_addr();
+  if addr.is_err() {
+    println!("[handle_connection] Error: Connected streams should have a peer address.");
+    return;
+  }
+  let addr = addr.unwrap();
 
   let ws_stream = tokio_tungstenite::accept_async(stream)
     .await
     .expect("Error during the websocket handshake occurred");
 
-  println!("[Accept connection] New websocket connection: {}", addr);
+  println!("[handle_connection] New websocket connection: {}", addr);
   
   // Split up the stream to a client reader and a client writer.
   let (ws_client_write, ws_client_read) = ws_stream.split();
@@ -105,7 +112,7 @@ async fn handle_connection(
 }
 
 async fn send_ws_client_messages(
-  mut server_msg_rx: broadcast::Receiver<Vec<Vec<u8>>>,
+  mut server_msg_rx: broadcast::Receiver<Vec<tungstenite::Message>>,
   mut ws_client_write: SplitSink<WebSocketStream<TcpStream>, Message>,
   mut ser_req_shutdown_rx: watch::Receiver::<bool>
 ) {
@@ -114,7 +121,7 @@ async fn send_ws_client_messages(
     recv_res = server_msg_rx.recv() => { match recv_res {
       Ok(msgs) => {
         for msg in msgs {
-          let res = ws_client_write.feed(Message::Binary(msg)).await;
+          let res = ws_client_write.feed(msg).await;
           if res.is_err() { println!("[tokio_server.rs] Failed to feed ws_client_write"); }
         }
         let res = ws_client_write.flush().await;
@@ -136,7 +143,7 @@ async fn send_ws_client_messages(
 }
 
 async fn recv_ws_client_messages(
-  client_msg_tx: mpsc::Sender<Vec<u8>>,
+  client_msg_tx: mpsc::Sender<tungstenite::Message>,
   mut ws_client_read: SplitStream<WebSocketStream<TcpStream>>,
   mut ser_req_shutdown_rx: watch::Receiver::<bool>
 ) {
@@ -148,7 +155,7 @@ async fn recv_ws_client_messages(
     // Receive messages from connected clients and forward them to client message buffer.
     read_res = ws_client_read.next() => { match read_res {
       Some(Ok(msg)) => {
-        let res = client_msg_tx.send(msg.into_data()).await;
+        let res = client_msg_tx.send(msg).await;
         if res.is_err() { println!("Failed to send client message to client msg buffer"); }
       }
       Some(Err(err)) => {

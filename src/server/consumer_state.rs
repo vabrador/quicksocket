@@ -22,10 +22,10 @@ pub struct ConsumerState {
   /// Consumer thread(s) clone of the server message transmitter, used to subscribe new receivers for any new connections.
   ///
   /// This is a clone of the Sender owned by the TokioState struct.
-  pub ser_msg_tx: broadcast::Sender<Vec<Vec<u8>>>,
+  pub ser_msg_tx: broadcast::Sender<Vec<tungstenite::Message>>,
 
   /// Consumer thread(s) receiver for messages from any connected clients. The server-side consumer should drain this receiver regularly.
-  pub cli_msg_rx: mpsc::Receiver<Vec<u8>>,
+  pub cli_msg_rx: mpsc::Receiver<tungstenite::Message>,
 
   /// Consumer thread(s) transmitter for requesting tokio to shut down.
   pub ser_req_shutdown_tx: watch::Sender<bool>,

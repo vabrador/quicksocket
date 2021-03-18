@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Webviz-Server Test HTML Client</title>
   <script>
-    const url = "wss://127.0.0.1:10202"
+    const url = "ws://127.0.0.1:10202"
     const webSocket = new WebSocket(url);
 
     webSocket.onopen += () => {
