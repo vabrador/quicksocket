@@ -1,3 +1,6 @@
+# Initial workflow for building manylinux wheel using `maturin` forked from:
+# https://github.com/konstin/complex-manylinux-maturin-dockers
+
 name: Build
 
 on:
