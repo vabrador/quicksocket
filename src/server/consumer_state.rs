@@ -7,39 +7,41 @@
 use std::{sync::{RwLock}};
 use tokio::sync::{broadcast, mpsc, watch};
 
-// ConsumerState
-// -------------
-//
-/// Struct containing all the state we want to associate with the consumer of the library, mostly just communication channels to/from the tokio thread.
-///
-/// This struct is guarded by a RwLock, and is intended to protect against the consumer of the library calling in from more than one thread to receive messages from the client.
-///
-/// Generally we expect the RwLock not to be in contention, as we expect generally just one server-side consumer thread is going to be asking to e.g. drain client messages.
-pub struct ConsumerState {
-  /// Consumer thread(s) receiver for whether the Tokio server thread is alive.
-  pub ser_thread_alive_rx: watch::Receiver<bool>,
-
-  /// Consumer thread(s) clone of the server message transmitter, used to subscribe new receivers for any new connections.
-  ///
-  /// This is a clone of the Sender owned by the TokioState struct.
-  pub ser_msg_tx: broadcast::Sender<Vec<tungstenite::Message>>,
-
-  /// Consumer thread(s) receiver for messages from any connected clients. The server-side consumer should drain this receiver regularly.
-  pub cli_msg_rx: mpsc::Receiver<tungstenite::Message>,
-
-  /// Consumer thread(s) transmitter for requesting tokio to shut down.
-  pub ser_req_shutdown_tx: watch::Sender<bool>,
-}
+type CS<T> = RwLock<Option<T>>;
+type WsMessage = tungstenite::Message;
 
 // Lazy Static
 // -----------
 //
+// Various RwLock<Option<T>>s (here short-handed to CS, for Consumer State) guard against thread-unsafe access to consumer state -- consisting mostly of channels used to communicate with the tokio runtime thread. Channels as a whole are thread-safe, but the channel ends -- Senders, Receivers -- are expected to be used from just one thread at a time! Hence the RwLock, so the consumer can't get cheeky with the channels when invoking library functions from different threads.
+//
+// However, it's totally OK for the consumer to access *different* channel ends from different threads; e.g., to check for client messages on one thread while sending server messages from another.
+
 lazy_static! {
-  /// Special storage associated with the library consumer, guarded by a RwLock. If the library consumer only ever calls into the library from a single thread, this lock won't hurt.
-  static ref CONSUMER_STATE: RwLock<Option<ConsumerState>> = RwLock::new(None);
+  /// Consumer thread(s) receiver for whether the Tokio server thread is alive.
+  pub static ref CS_SER_ALIVE_RX: CS<watch::Receiver<bool>> =
+    RwLock::new(None);
+
+  /// Consumer thread(s) receiver for events indicating newly-connected clients. The server-side consumer should drain this receiver regularly.
+  pub static ref CS_CLI_CONN_RX: CS<mpsc::Receiver<String>> =
+    RwLock::new(None);
+
+  /// Consumer thread(s) clone of the server message transmitter, used to subscribe new receivers for any new connections.
+  ///
+  /// This is a clone of the Sender owned by the TokioState struct.
+  pub static ref CS_SER_MSG_TX: CS<broadcast::Sender<Vec<WsMessage>>> =
+    RwLock::new(None);
+
+  /// Consumer thread(s) receiver for messages from any connected clients. The server-side consumer should drain this receiver regularly.
+  pub static ref CS_CLI_MSG_RX: CS<mpsc::Receiver<WsMessage>> =
+    RwLock::new(None);
+
+  /// Consumer thread(s) transmitter for requesting tokio to shut down.
+  pub static ref CS_SER_REQ_SHUTDOWN_TX: CS<watch::Sender<bool>> =
+    RwLock::new(None);
 
   /// Very coarse way of providing some quick error reporting to the consumer without panicking.
-  static ref LAST_ERROR:     RwLock<Option<String>>        = RwLock::new(None);
+  static ref LAST_ERROR: CS<String> = RwLock::new(None);
 }
 
 // Error API
@@ -74,35 +76,45 @@ pub fn try_get_last_error() -> Option<String> {
 // ---------
 //
 
-pub fn read<F, T>(intent: &str, f: F) -> Option<T> where F: FnOnce(&ConsumerState) -> T {
-  let read_guard = CONSUMER_STATE.read();
+/// Pass one of the "CS_" (consumer state) statics available in the consumer_state module and an operating function to do something with read access to that static (e.g. receive a message from a consumer channel).
+pub fn read<T, U, R, F>(lazy_static_item: &R, f: F) -> Option<U>
+where
+  F: FnOnce(&T) -> U,
+  R: std::ops::Deref<Target = RwLock<Option<T>>>
+{
+  let read_guard = lazy_static_item.read();
   if read_guard.is_err() {
-    weakly_record_error(format!("Failed to get read access to consumer state. Intent was: {}", intent));
+    weakly_record_error(format!("Failed to get read access to {}.", std::any::type_name::<R>()));
     return None;
   }
   let read_guard = read_guard.unwrap();
 
-  let state = read_guard.as_ref();
-  if state.is_none() {
-    weakly_record_error(format!("Failed to get read access to consumer state, storage was empty. (Is the server running?) Intent was: {}", intent));
+  let item = read_guard.as_ref();
+  if item.is_none() {
+    weakly_record_error(format!("Failed to get read access to {}, as it hasn't been created yet. Is the server running?", std::any::type_name::<R>()));
     return None;
   }
-  let state = state.unwrap();
+  let item = item.unwrap();
 
-  Some(f(state))
+  Some(f(item))
 }
 
-pub fn write<F, T>(intent: &str, f: F) -> Option<T> where F: FnOnce(&mut ConsumerState) -> T {
-  let write_guard = CONSUMER_STATE.write();
+/// Pass one of the "CS_" (consumer state) statics available in the consumer_state module and an operating function to do something with mutable access to that static (e.g. send a message using a Sender).
+pub fn mutate<T, U, R, F>(lazy_static_item: &R, f: F) -> Option<U>
+where
+  F: FnOnce(&mut T) -> U,
+  R: std::ops::Deref<Target = RwLock<Option<T>>>
+{
+  let write_guard = lazy_static_item.write();
   if write_guard.is_err() {
-    weakly_record_error(format!("Failed to get write access to consumer state. Intent was: {}", intent));
+    weakly_record_error(format!("Failed to get write access to {}.", std::any::type_name::<R>()));
     return None;
   }
   let mut write_guard = write_guard.unwrap();
 
   let state = write_guard.as_mut();
   if state.is_none() {
-    weakly_record_error(format!("Failed to get write access to consumer state, storage was empty. (Is the server running?) Intent was: {}", intent));
+    weakly_record_error(format!("Failed to mutable ref for {}, as it hasn't been created yet. Is the server running?", std::any::type_name::<R>()));
     return None;
   }
   let state = state.unwrap();
@@ -110,14 +122,49 @@ pub fn write<F, T>(intent: &str, f: F) -> Option<T> where F: FnOnce(&mut Consume
   Some(f(state))
 }
 
-pub fn set_consumer_state(consumer_state: ConsumerState) -> Result<(), ()> {
-  let write_guard = CONSUMER_STATE.write();
+
+/// Pass one of the "CS_" (consumer state) statics available in the consumer_state module and a value of the inner type to set the RwLock<Option<T>> with Some<T>. This is used internally by the server::start() function to initialize consumer-side channels.
+pub fn set_value<T, R>(lazy_static_item: &R, new_val: T) -> Result<(), ()>
+where
+  R: std::ops::Deref<Target = RwLock<Option<T>>>
+{
+  let write_guard = lazy_static_item.write();
   if write_guard.is_err() {
-    weakly_record_error(format!("Failed to get write access to consumer state to set whole object."));
+    weakly_record_error(format!("Failed to get write access to {} to set its value.", std::any::type_name::<R>()));
     return Err(());
   }
   let mut write_guard = write_guard.unwrap();
 
-  (*write_guard) = Some(consumer_state);
+  (*write_guard) = Some(new_val);
   Ok(())
 }
+
+// // // pub fn write<F, T>(intent: &str, f: F) -> Option<T> where F: FnOnce(&mut ConsumerState) -> T {
+// // //   let write_guard = CONSUMER_STATE.write();
+// // //   if write_guard.is_err() {
+// // //     weakly_record_error(format!("Failed to get write access to consumer state. Intent was: {}", intent));
+// // //     return None;
+// // //   }
+// // //   let mut write_guard = write_guard.unwrap();
+
+// // //   let state = write_guard.as_mut();
+// // //   if state.is_none() {
+// // //     weakly_record_error(format!("Failed to get write access to consumer state, storage was empty. (Is the server running?) Intent was: {}", intent));
+// // //     return None;
+// // //   }
+// // //   let state = state.unwrap();
+
+// // //   Some(f(state))
+// // // }
+
+// // // pub fn set_consumer_state(consumer_state: ConsumerState) -> Result<(), ()> {
+// // //   let write_guard = CONSUMER_STATE.write();
+// // //   if write_guard.is_err() {
+// // //     weakly_record_error(format!("Failed to get write access to consumer state to set whole object."));
+// // //     return Err(());
+// // //   }
+// // //   let mut write_guard = write_guard.unwrap();
+
+// // //   (*write_guard) = Some(consumer_state);
+// // //   Ok(())
+// // // }

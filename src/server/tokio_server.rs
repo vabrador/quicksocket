@@ -8,6 +8,7 @@ use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 /// This function launches a tokio runtime to handle most server functions. The function will return after the tokio runtime exits.
 pub fn main(
   ser_thread_alive_tx: watch::Sender::<bool>,
+  cli_conn_tokio_tx: mpsc::Sender<String>,
   ser_msg_tx: broadcast::Sender::<Vec<tungstenite::Message>>,
   cli_msg_tx: mpsc::Sender::<tungstenite::Message>,
   mut ser_req_shutdown_rx: watch::Receiver::<bool>
@@ -23,8 +24,8 @@ pub fn main(
     let res = ser_thread_alive_tx.send(true);
     if res.is_err() { println!("Failed to set server alive."); return; }
 
-    // Bind to websocket on localhost port 10202.
-    let addr = "127.0.0.1:10202";
+    // Bind to websocket on localhost port 50808.
+    let addr = "127.0.0.1:50808";
     let listener = TcpListener::bind(&addr).await;
     if listener.is_err() { println!("Failed to bind TcpListener."); return; }
     let listener = listener.unwrap();
@@ -43,7 +44,9 @@ pub fn main(
         // Valid connection. Launch task to handle the connection for its lifetime.
         Ok((stream, _)) = &mut accept_conn => {
           let peer = stream.peer_addr().expect("Connected streams should have a peer address");
-          println!("[listen_for_websocket_connections] Peer address: {}", peer);
+          println!("[tokio_server.rs] Peer address: {}", peer);
+          let new_client_evt = peer.to_string();
+          cli_conn_tokio_tx.send(new_client_evt).await.unwrap_or_else(|_| println!("[tokio_server.rs] Failed to report new client event to consumer."));
 
           // Each connection receives a reciever for messages to forward from the server, and a transmitter to forward client messages back to the server.
           let (ser_msg_broadcast_rx, cli_msg_store_tx) = (
@@ -57,7 +60,7 @@ pub fn main(
         // Receive an exit signal and shutdown.
         _ = ser_req_shutdown_rx.changed() => {
           if *ser_req_shutdown_rx.borrow() {
-            println!("[listen_for_websocket_connections] Received shutdown signal.");
+            println!("[tokio_server.rs] Received shutdown signal.");
             break;
           }
         }
@@ -65,11 +68,11 @@ pub fn main(
     } // loop
 
     // Shut down.
-    println!("Server writing alive = false.");
-    ser_thread_alive_tx.send(false).expect("Failed to set server thread alive to false.");
+    println!("[tokio_server.rs] Server writing alive = false.");
+    ser_thread_alive_tx.send(false).unwrap_or_else(|_| println!("[tokio_server.rs] Failed to set server thread alive to false!"));
   });
   
-  println!("Server shutting down.");
+  println!("[tokio_server.rs] Server tokio thread exiting.");
   Ok("Server shut-down successfully.".to_string())
 }
 
@@ -122,10 +125,16 @@ async fn send_ws_client_messages(
       Ok(msgs) => {
         for msg in msgs {
           let res = ws_client_write.feed(msg).await;
-          if res.is_err() { println!("[tokio_server.rs] Failed to feed ws_client_write"); }
+          if res.is_err() {
+            println!("[send_ws_client_messages] Failed to feed ws_client_write. Assuming the connection has closed; terminating server forwarding task for this client.");
+            break;
+          }
         }
         let res = ws_client_write.flush().await;
-        if res.is_err() { println!("[tokio_server.rs] Failed to flush ws_client_write"); }
+        if res.is_err() {
+          println!("[send_ws_client_messages] Failed to flush ws_client_write. Assuming the connection has closed; terminating server forwarding task for this client.");
+          break;
+        }
       }
       Err(err) => {
         println!("[send_ws_client_messages] Error sending msg to WS client: {:?}", err);
@@ -156,13 +165,13 @@ async fn recv_ws_client_messages(
     read_res = ws_client_read.next() => { match read_res {
       Some(Ok(msg)) => {
         let res = client_msg_tx.send(msg).await;
-        if res.is_err() { println!("Failed to send client message to client msg buffer"); }
+        if res.is_err() { println!("[recv_ws_client_messages] Failed to send client message to client msg buffer"); }
       }
       Some(Err(err)) => {
-        println!("[send_ws_client_messages] Error sending msg to WS client: {:?}", err);
+        println!("[recv_ws_client_messages] Error receiving msg from WS client: {:?}", err);
       }
       None => {
-        println!("[send_ws_client_messages] None received from ws_client_read.next(), connection stream must be closed.");
+        println!("[recv_ws_client_messages] None received from ws_client_read.next(), connection stream must be closed.");
         break;
       }
     }}

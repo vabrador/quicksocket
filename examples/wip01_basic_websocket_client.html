@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Webviz-Server Test HTML Client</title>
   <script>
-    const url = "ws://127.0.0.1:10202"
+    const url = "ws://127.0.0.1:50808"
     let webSocket = new WebSocket(url);
     let isConnected = false;
     window.messageCount = 0;
@@ -15,7 +15,7 @@
     }
 
     webSocket.onmessage = msg => {
-      if (window.messageCount < 10) {
+      if (window.messageCount < 50) {
         console.log(`Received message from the websocket server, message index: ${window.messageCount}`);
         console.table(msg);
         window.messageCount += 1;
