@@ -18,9 +18,15 @@ jobs:
       - uses: actions/checkout@v1
       - name: Install stable Rust toolchain
         run: curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-      # # Insert steps here to install your other dependencies. Note that you're running inside of cent os 7, not ubuntu
+      # Insert steps here to install your other dependencies. Note that you're running inside of cent os 7, not ubuntu
+      #
+      # For example:
       # - name: Installing custom dependency
       #   run: echo "Installing custom dependency"
+      - name: Print OpenSSL version
+        run: yum info openssl
+      - name: Naively attempt to install openssl via yum
+        run: yum install openssl
       - name: Build
         run: |
           source $HOME/.cargo/env
@@ -28,8 +34,9 @@ jobs:
             "${PYBIN}/pip" install maturin
             "${PYBIN}/maturin" build -m Cargo.toml -i "${PYBIN}/python" --release --manylinux 2014
           done
-      # # Auditwheel isn't generally necessary. This is only shown as refernce for cases where you link
-      # # external libraries, in which case you have to set manylinux to off and then use auditwheel repair
+      # Auditwheel isn't generally necessary. This is only shown as refernce for cases where you link external libraries, in which case you have to set manylinux to off and then use `auditwheel repair`.
+      #
+      # For example:
       # - name: Auditwheel repair
       #   run: |
       #     for wheel in nightly-only/target/wheels/*.whl; do
