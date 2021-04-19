@@ -10,31 +10,42 @@ on:
   pull_request:
 
 jobs:
-  build-manylinux-wheel-via--rust-stable:
-    name: Build manylinux wheel via Rust stable toolchain
+  manylinux-wheels-via-rust-stable:
+    name: manylinux wheels via Rust stable
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux2014_x86_64
     steps:
       - uses: actions/checkout@v1
+
+      # Install Rust.
       - name: Install stable Rust toolchain
-        run: curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+        # # # run: curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
+
       # Insert steps here to install your other dependencies. Note that you're running inside of cent os 7, not ubuntu
       #
       # For example:
       # - name: Installing custom dependency
       #   run: echo "Installing custom dependency"
-      - name: Print OpenSSL version
-        run: yum info openssl
-      - name: Naively attempt to install openssl via yum
-        run: yum install openssl
-      - name: Build
+      - name: Install openssl-devel
+        run: yum install -y openssl-devel
+        
+      # Build the wheels.
+      - name: Build wheels
         run: |
           source $HOME/.cargo/env
           for PYBIN in /opt/python/cp3[6789]*/bin; do
             "${PYBIN}/pip" install maturin
             "${PYBIN}/maturin" build -m Cargo.toml -i "${PYBIN}/python" --release --manylinux 2014
           done
-      # Auditwheel isn't generally necessary. This is only shown as refernce for cases where you link external libraries, in which case you have to set manylinux to off and then use `auditwheel repair`.
+
+      # Auditwheel repair.
+      #
+      # Auditwheel isn't generally necessary. This is only shown as reference for cases where you link external libraries, in which case you have to set manylinux to off and then use `auditwheel repair`.
       #
       # For example:
       # - name: Auditwheel repair
@@ -42,3 +53,78 @@ jobs:
       #     for wheel in nightly-only/target/wheels/*.whl; do
       #         auditwheel repair "${wheel}"
       #     done
+
+      # Debug print some directories.
+      - name: Debug Print Dirs
+        run: |
+          echo "ls working directory..."
+          ls
+          echo "ls target/wheels..."
+          ls target/wheels
+
+      # Upload target/wheels.
+      - name: Upload target/wheels
+        uses: actions/upload-artifact@v2
+        with:
+          name: manylinux-wheels
+          path: target/wheels
+
+  windows-wheels-via-rust-stable:
+    name: Windows wheels via Rust stable
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      # Install OpenSSL.
+      - name: Install OpenSSL via chocolatey... CAUSES PAGE LAG :(
+        uses: nickjbenson/ghaction-chocolatey@master
+        with:
+          args: install openssl -y -r
+
+      # Install Rust.
+      - name: Install stable Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
+
+      # Install Pythons. (pyo3 doesn't support 3.5 actually...)
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.6'
+      - run: echo "PY_3_6=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.7'
+      - run: echo "PY_3_7=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+      - run: echo "PY_3_8=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+      - run: echo "PY_3_9=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+
+      # Build wheels.
+      - name: Build wheels
+        run: |
+          # Note: Manually ref install dir for OpenSSL
+          $Env:OPENSSL_DIR='C:\Program Files\OpenSSL-Win64'
+          foreach ($PYTHON in @($env:PY_3_6, $env:PY_3_7, $env:PY_3_8, $env:PY_3_9)) {
+            echo "Building with $($PYTHON)..."
+            .$PYTHON -m pip install maturin
+            maturin build --release -i $PYTHON
+          }
+
+      # Upload wheels.
+      - name: Upload target/wheels
+        uses: actions/upload-artifact@v1
+        with:
+          name: windows-wheels
+          path: target/wheels
