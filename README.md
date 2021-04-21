@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/quicksocket.svg?style=flat)](https://pypi.org/project/quicksocket/)
 [![Crates.io](https://img.shields.io/crates/v/quicksocket.svg?style=flat)](https://crates.io/crates/quicksocket)
 
-A simple WebSocket server built in Rust using [tokio](https://tokio.rs/), [tokio-tungstenite](https://github.com/snapview/tokio-tungstenite), and [pyo3](https://github.com/PyO3/PyO3). 
+A simple WebSocket server built in Rust using [tokio](https://tokio.rs/), [tokio-tungstenite](https://github.com/snapview/tokio-tungstenite), and [pyo3](https://github.com/PyO3/PyO3).
 
 ```sh
 pip install quicksocket
