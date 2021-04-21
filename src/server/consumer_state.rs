@@ -47,8 +47,9 @@ lazy_static! {
 // Error API
 // ---------
 //
+// This is probably not a very good error API. -Nick 2021-04-21
 
-/// Attempts to record the passed &str to the thread-safe LAST_ERROR storage. The method may fail silently if it can't get write access to LAST_ERROR, hence, "weakly". This is very likely to squelch errors if more than one propagates in short succession across more than one thread.
+/// Attempts to record the passed &str to the thread-safe LAST_ERROR storage. The method may fail silently if it can't get write access to LAST_ERROR, hence, "weakly". This is very likely to clobber errors if more than one propagates in short succession across more than one thread.
 pub fn weakly_record_error(msg: String) {
   let last_err = LAST_ERROR.try_write();
   if last_err.is_err() { return; /* silently fail. */ }
@@ -59,10 +60,11 @@ pub fn weakly_record_error(msg: String) {
 
 /// Returns the last error if possible. Returns None only if there is no last error.
 pub fn try_get_last_error() -> Option<String> {
+  // Attempt to lock and unwrap.
   let err_store = LAST_ERROR.read();
-  if err_store.is_err() { /* Yo dawg */ return Some("Couldn't get last error.".to_string()); }
+  if err_store.is_err() { return Some("Couldn't get last error.".to_string()); }
 
-  // Peeeeel back the onion. RwLocks are like onions. RwLocks have *layers.*
+  // Convert (possibly poisoned) lock into a Result.
   let err_store = err_store.as_deref();
   if err_store.is_err() { return Some("Couldn't get last error.".to_string()); }
 
@@ -70,7 +72,6 @@ pub fn try_get_last_error() -> Option<String> {
   let err_store = err_store.unwrap().as_ref();
   err_store.map_or(None, |s| Some(String::from(s)))
 }
-
 
 // State API
 // ---------
@@ -138,33 +139,3 @@ where
   (*write_guard) = Some(new_val);
   Ok(())
 }
-
-// // // pub fn write<F, T>(intent: &str, f: F) -> Option<T> where F: FnOnce(&mut ConsumerState) -> T {
-// // //   let write_guard = CONSUMER_STATE.write();
-// // //   if write_guard.is_err() {
-// // //     weakly_record_error(format!("Failed to get write access to consumer state. Intent was: {}", intent));
-// // //     return None;
-// // //   }
-// // //   let mut write_guard = write_guard.unwrap();
-
-// // //   let state = write_guard.as_mut();
-// // //   if state.is_none() {
-// // //     weakly_record_error(format!("Failed to get write access to consumer state, storage was empty. (Is the server running?) Intent was: {}", intent));
-// // //     return None;
-// // //   }
-// // //   let state = state.unwrap();
-
-// // //   Some(f(state))
-// // // }
-
-// // // pub fn set_consumer_state(consumer_state: ConsumerState) -> Result<(), ()> {
-// // //   let write_guard = CONSUMER_STATE.write();
-// // //   if write_guard.is_err() {
-// // //     weakly_record_error(format!("Failed to get write access to consumer state to set whole object."));
-// // //     return Err(());
-// // //   }
-// // //   let mut write_guard = write_guard.unwrap();
-
-// // //   (*write_guard) = Some(consumer_state);
-// // //   Ok(())
-// // // }

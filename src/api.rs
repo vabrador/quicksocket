@@ -1,7 +1,7 @@
 // api.rs
 // ======
 //
-// Primary Python module and Rust-lib public API for the webviz-server library.
+// Primary Python module and Rust-lib public API.
 
 use futures_util::FutureExt;
 use pyo3::{prelude::*, wrap_pyfunction};
@@ -36,18 +36,11 @@ pub fn is_server_running() -> bool {
         println!("Failed to get server alive!");
         false
     })
-    // // // consumer_state::read("Read server alive", |state| {
-    // // //     println!("Returning server alive: {}", *state.ser_thread_alive_rx.borrow());
-    // // //     *state.ser_thread_alive_rx.borrow()
-    // // // }).unwrap_or(false)
 }
 
 /// Requests that the websocket server shut down. The server will not shut down immediately but will stop serving as soon as e.g. it processes the shutdown request and any existing network requests are resolved.
 #[pyfunction]
 pub fn shutdown_server() {
-    // consumer_state::mutate("Request server shutdown", |state| {
-    //     state.ser_req_shutdown_tx.send(true)
-    // });
     let res = cs::mutate(&cs::CS_SER_REQ_SHUTDOWN_TX, |tx| tx.send(true));
     if res.is_none() {
         println!("[api.rs] Warning! Failed to send shutdown request.");
@@ -60,6 +53,7 @@ pub fn get_last_error_string() -> Option<String> {
     consumer_state::try_get_last_error()
 }
 
+/// Retrieves a List (Rust: Vec<String>) of all new client connection events that have occurred since this function was last called.
 #[pyfunction]
 pub fn drain_new_client_events(py: Python) -> Vec<String> {
     py.allow_threads(|| {
@@ -100,14 +94,11 @@ impl IntoPy<PyObject> for MessagePayload {
             }
         }
     }
-    // fn to_object(&self, py: Python) -> PyObject {
-    //     match self {
-    //         Text(text) => { Py}
-    //     }
-    // }
 }
 
-/// Send messages to all connected clients. The socket stream is flushed after buffering each message in the argument list[bytes], so it's better to call this once per 'update,' rather than calling this method multiple times if multiple messages are all available to be sent.
+/// Send messages to all connected clients. The socket stream is flushed after buffering each message in the argument List, so it's better to call this once per 'update,' rather than calling this method multiple times if multiple messages are all available to be sent.
+///
+/// The List may contain strings or bytes.
 ///
 /// Will return false if there are not currently any active subscribers (websocket clients), indicating no data was sent. False may also be returned if there was an error trying to access the broadcast channel in the first place (i.e. thread contention to access it).
 ///
@@ -154,7 +145,7 @@ pub fn drain_client_messages(py: Python) -> Vec<MessagePayload> {
     
             // Apparently there's an issue with try_recv() where messages may not be immediately available once submitted to the channel (they may be subject to a slight delay).
             // Details: https://github.com/tokio-rs/tokio/issues/3350
-            // TODO: May look into using 'flume', with some tokio-based sync primitive on the tokio task side.
+            // TODO: May look into using flume, with some tokio-based sync primitive on the tokio task side.
             while let Some(Some(cli_msg)) = rx.recv().now_or_never() {
                 // Convert the message into the python-convertible MessagePayload type.
                 // For now, we ignore the ping/pong and Close websocket messages.
@@ -179,7 +170,7 @@ pub fn drain_client_messages(py: Python) -> Vec<MessagePayload> {
     })
 }
 
-/// The keras-hannd web visualizer websocket server as a native Python module, authored in Rust.
+/// Defines the actual python module for pyo3 to generate.
 #[pymodule]
 fn webviz_server_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(start_server,               m)?)?;

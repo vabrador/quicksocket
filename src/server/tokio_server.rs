@@ -156,10 +156,6 @@ async fn recv_ws_client_messages(
   mut ws_client_read: SplitStream<WebSocketStream<TcpStream>>,
   mut ser_req_shutdown_rx: watch::Receiver::<bool>
 ) {
-  // if let Some(Ok(foo)) = ws_client_read.next().await {
-  //   foo.into_data()
-  // }
-
   loop { tokio::select! {
     // Receive messages from connected clients and forward them to client message buffer.
     read_res = ws_client_read.next() => { match read_res {

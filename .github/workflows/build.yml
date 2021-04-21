@@ -75,12 +75,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v1
+      
+      # Attempt to cache OpenSSL.
+      - name: Cache Win64 OpenSSL
+        id: cache-win64-openssl
+        uses: actions/cache@v2
+        with:
+          path: 'C:\Program Files\OpenSSL-Win64'
+          key: win64-openssl
+          # key: ${{ runner.os }}-openssl
 
-      # Install OpenSSL.
-      - name: Install OpenSSL via chocolatey... CAUSES PAGE LAG :(
+      # Install OpenSSL if we don't have it cached.
+      - name: Install OpenSSL via chocolatey (line-heavy output, causes page lag)
+        if: steps.cache-win64-openssl.outputs.cache-hit != 'true'
         uses: nickjbenson/ghaction-chocolatey@master
         with:
           args: install openssl -y -r
+      # (It should now cache at C:\Program Files\OpenSSL-Win64)
 
       # Install Rust.
       - name: Install stable Rust toolchain
@@ -128,3 +139,32 @@ jobs:
         with:
           name: windows-wheels
           path: target/wheels
+  
+  upload-wheels-to-pip:
+    name: Upload Windows & Linux wheels to pip
+    needs: [manylinux-wheels-via-rust-stable, windows-wheels-via-rust-stable]
+    runs-on: ubuntu-latest
+    environment: pypi_publishing_environment
+    steps:
+      - name: Download Linux wheel artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: manylinux-wheels
+      - name: Download Windows wheel artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: windows-wheels
+      - name: Python & pip
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+      - name: Upload to pip
+        env:
+          MATURIN_PIP_TOKEN: ${{ secrets.MATURIN_PIP_TOKEN }}
+        run: |
+          pip install maturin
+          for WHEEL in *.whl
+          do
+            echo "Attempting to upload $(echo $WHEEL)"
+            maturin upload --skip-existing -u __token__ -p $MATURIN_PIP_TOKEN $WHEEL
+          done

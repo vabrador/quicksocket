@@ -1,13 +1,25 @@
 [package]
-name = "webviz_server"
+name = "quicksocket"
 version = "0.1.0"
-authors = ["Nicholas Benson <nickjbenson@gmail.com>"]
+authors = ["Nick Benson <nickjbenson@gmail.com>"]
 edition = "2018"
+license = "MIT"
+description = "A simple, natively parallel WebSocket server module for Python built with Rust, tokio, and pyo3."
+homepage = "https://github.com/nickjbenson/quicksocket"
+repository = "https://github.com/nickjbenson/quicksocket"
+readme = "README.md"
+keywords = ["python", "websocket"]
+categories = ["web-programming::websocket"]
+exclude = [
+    ".github/*",
+    ".vscode/*",
+    "archive/*",
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "webviz_server_rs"
+name = "quicksocket"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
@@ -21,8 +33,7 @@ futures-util = { version = "0.3.13", default-features = false, features = ["asyn
 # Tokio for async task management and hyper to run a basic http server.
 tokio = { version = "1.3.0", features = ["full"] }
 hyper = { version = "0.14.4", features = ["full"] }
-# Experimenting with transfer mechanisms to the browser with these.
-webrtc-unreliable = "0.5.0"
+# Tungstenite is the WebSocket backend.
 tokio-tungstenite = "0.14.0"
 tungstenite = { version = "0.13.0", default-features = false }
 

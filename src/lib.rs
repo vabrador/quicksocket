@@ -1,7 +1,7 @@
-// webviz-server
+// quicksocket
 // =============
 //
-// A module for handling websocket connections through Rust. This module targets both Rust consumption (for testing purposes mainly) and compilation as a native Python module for consumption via Python.
+// A simple WebSocket server that is compiled via pyo3 to a native Python module. This module targets Python consumption primarily, but Rust consumption is theoretically also valid, and used for testing purposes.
 
 #[macro_use]
 extern crate lazy_static;
