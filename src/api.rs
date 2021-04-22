@@ -172,7 +172,7 @@ pub fn drain_client_messages(py: Python) -> Vec<MessagePayload> {
 
 /// Defines the actual python module for pyo3 to generate.
 #[pymodule]
-fn webviz_server_rs(_py: Python, m: &PyModule) -> PyResult<()> {
+fn quicksocket(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(start_server,               m)?)?;
     m.add_function(wrap_pyfunction!(is_server_running,          m)?)?;
     m.add_function(wrap_pyfunction!(shutdown_server,            m)?)?;
