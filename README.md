@@ -64,11 +64,6 @@ If you encounter errors building `pyo3`, you may need to check whether it can fi
 
 ## Todos:
 
-#### GitHub Actions
-Make this faster: https://github.com/nickjbenson/quicksocket/blob/main/.github/workflows/build.yml#L80 via https://github.com/actions/cache
-
-Example in action: https://github.com/zalo/opencascade.js/blob/master/.github/workflows/main.yml#L16-L44
-
 #### Little utility HTML via github pages
 Could expose this through Github Pages so it's easy for a new user to test their server usage:
 https://github.com/nickjbenson/quicksocket/blob/main/archive/examples/wip01_basic_websocket_client.html
