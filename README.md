@@ -60,7 +60,7 @@ sudo apt-get install libssl-dev
 sudo apt-get install libpython3-dev
 ```
 
-If you encounter errors building `pyo3`, you may need to check whether it can find yor python and any related python dev dependencies: https://pyo3.rs/v0.10.1/building_and_distribution.html
+If you encounter errors building `pyo3`, you may need to check whether it can find your python and any related python dev dependencies: https://pyo3.rs/v0.10.1/building_and_distribution.html
 
 ## Todos:
 
