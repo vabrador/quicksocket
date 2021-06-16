@@ -109,10 +109,10 @@ jobs:
       # Build wheels.
       - name: Build wheels
         run: |
-          for PYBIN in $PY_3_6 $PY_3_7 $PY_3_8 $PY_3_9
+          for PYTHON in $PY_3_6 $PY_3_7 $PY_3_8 $PY_3_9
           do
-            echo "Building with $PYBIN..."
-            $PYBIN -m pip install maturin
+            echo "Building with $PYTHON..."
+            $PYTHON -m pip install maturin
             maturin build --release -i $PYTHON
           done
 
