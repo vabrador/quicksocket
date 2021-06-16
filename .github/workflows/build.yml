@@ -205,7 +205,7 @@ jobs:
   upload-wheels-to-pip:
     # Only upload to pip if this is a commit on the main branch!
     if: github.ref == 'refs/heads/main'
-    name: Upload Windows & Linux wheels to pip
+    name: Upload Windows, macOS, and Linux wheels to pip
     needs: [
       manylinux-wheels-via-rust-stable,
       windows-wheels-via-rust-stable,
