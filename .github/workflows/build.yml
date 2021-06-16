@@ -69,6 +69,68 @@ jobs:
           name: manylinux-wheels
           path: target/wheels
 
+  macos-wheels-via-rust-stable:
+    name: macOS wheels via Rust stable
+    # For now we build for macOS Catalina (macos-10.15) - Big Sur maybe later? -2021-06-16
+    runs-on: macos-10.15
+    steps:
+      - uses: actions/checkout@v1
+
+      # Install Rust.
+      - name: Install stable Rust toolchain
+        # # # run: curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
+
+      # Install Pythons.
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.6'
+      - run: echo "PY_3_6=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.7'
+      - run: echo "PY_3_7=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+      - run: echo "PY_3_8=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+      - run: echo "PY_3_9=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+
+      # Build wheels.
+      - name: Build wheels
+        run: |
+          for PYTHON in $PY_3_6 $PY_3_7 $PY_3_8 $PY_3_9
+          do
+            echo "Building with $PYTHON..."
+            $PYTHON -m pip install maturin
+            maturin build --release -i $PYTHON
+          done
+
+      # Debug print some directories.
+      - name: Debug Print Dirs
+        run: |
+          echo "ls working directory..."
+          ls
+          echo "ls target/wheels..."
+          ls target/wheels
+
+      # Upload target/wheels.
+      - name: Upload target/wheels
+        uses: actions/upload-artifact@v2
+        with:
+          name: macos-wheels
+          path: target/wheels
+
   windows-wheels-via-rust-stable:
     name: Windows wheels via Rust stable
     runs-on: windows-latest
@@ -101,7 +163,7 @@ jobs:
           default: true
           override: true
 
-      # Install Pythons. (pyo3 doesn't support 3.5 actually...)
+      # Install Pythons.
       - uses: actions/setup-python@v2
         with:
           python-version: '3.6'
@@ -139,12 +201,16 @@ jobs:
         with:
           name: windows-wheels
           path: target/wheels
-  
+
   upload-wheels-to-pip:
     # Only upload to pip if this is a commit on the main branch!
     if: github.ref == 'refs/heads/main'
-    name: Upload Windows & Linux wheels to pip
-    needs: [manylinux-wheels-via-rust-stable, windows-wheels-via-rust-stable]
+    name: Upload Windows, macOS, and Linux wheels to pip
+    needs: [
+      manylinux-wheels-via-rust-stable,
+      windows-wheels-via-rust-stable,
+      macos-wheels-via-rust-stable
+    ]
     runs-on: ubuntu-latest
     environment: pypi_publishing_environment
     steps:
@@ -152,6 +218,10 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: manylinux-wheels
+      - name: Download macOS wheel artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: macos-wheels
       - name: Download Windows wheel artifacts
         uses: actions/download-artifact@v2
         with:

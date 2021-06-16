@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/quicksocket.svg?style=flat)](https://pypi.org/project/quicksocket/)
 [![Crates.io](https://img.shields.io/crates/v/quicksocket.svg?style=flat)](https://crates.io/crates/quicksocket)
 
-A simple WebSocket server built in Rust using [tokio](https://tokio.rs/), [tokio-tungstenite](https://github.com/snapview/tokio-tungstenite), and [pyo3](https://github.com/PyO3/PyO3).
+A simple WebSocket server built in Rust using [tokio](https://tokio.rs/), [tokio-tungstenite](https://github.com/snapview/tokio-tungstenite), and [pyo3](https://github.com/PyO3/PyO3). Supports Windows, macOS, and Linux. Still unstable!
 
 ```sh
 pip install quicksocket
@@ -26,7 +26,7 @@ At some point in the future it'll make sense to switch to some proper env loggin
 
 You'll need [Rust](https://rustup.rs/) and access to some python.exe of version 3.6 or greater.
 
-You'll also need OpenSSL. See the Ubuntu section for installation details on Ubuntu. OpenSSL is slightly trickier for Windows. You can use Chocolatey or vcpkg, or download a binary distribution of OpenSSL. You may need to set `$Env:OPENSSL_DIR` (PowerShell syntax) to your installation directory for your Windows build session if using Chocolatey, or a binary install, or if vcpkg isn't activated for your session.
+You'll also need OpenSSL. See the Ubuntu section for installation details on Ubuntu. OpenSSL is slightly trickier for Windows. You can use Chocolatey or vcpkg, or download a binary distribution of OpenSSL. You may need to set `$Env:OPENSSL_DIR` (PowerShell syntax) to your installation directory for your Windows build session if using Chocolatey, or a binary install, or if vcpkg isn't activated for your session. macOS should have it by default.
 
 Once Rust is installed:
 ```sh
@@ -41,7 +41,7 @@ pip install maturin
 maturin build
 ```
 
-There's CI for Linux & Windows for Pythons 3.6 through 3.9, check out the Actions tab for now (proper release tags coming soon).
+There's CI for Windows, macOS, and Linux for Pythons 3.6 through 3.9. Check out the Actions tab for now (proper release tags coming "soon").
 
 ## Targeting builds to specific Python versions
 
