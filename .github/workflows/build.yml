@@ -84,14 +84,36 @@ jobs:
           toolchain: stable
           default: true
           override: true
-        
-      # Build the wheels.
+
+      # Install Pythons.
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.6'
+      - run: echo "PY_3_6=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.7'
+      - run: echo "PY_3_7=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+      - run: echo "PY_3_8=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+      - run: echo "PY_3_9=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+
+      # Build wheels.
       - name: Build wheels
         run: |
-          source $HOME/.cargo/env
-          for PYBIN in /opt/python/cp3[6789]*/bin; do
-            "${PYBIN}/pip" install maturin
-            "${PYBIN}/maturin" build -m Cargo.toml -i "${PYBIN}/python" --release
+          for PYBIN in $PY_3_6 $PY_3_7 $PY_3_8 $PY_3_9
+          do
+            echo "Building with $PYBIN..."
+            $PYBIN -m pip install maturin
+            maturin build --release -i $PYTHON
           done
 
       # Debug print some directories.
@@ -141,7 +163,7 @@ jobs:
           default: true
           override: true
 
-      # Install Pythons. (pyo3 doesn't support 3.5 actually...)
+      # Install Pythons.
       - uses: actions/setup-python@v2
         with:
           python-version: '3.6'
