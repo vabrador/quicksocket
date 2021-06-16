@@ -69,6 +69,46 @@ jobs:
           name: manylinux-wheels
           path: target/wheels
 
+  macos-wheels-via-rust-stable:
+    name: macOS wheels via Rust stable
+    # For now we build for macOS Catalina (macos-10.15) - Big Sur maybe later? -2021-06-16
+    runs-on: macos-10.15
+    steps:
+      - uses: actions/checkout@v1
+
+      # Install Rust.
+      - name: Install stable Rust toolchain
+        # # # run: curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
+        
+      # Build the wheels.
+      - name: Build wheels
+        run: |
+          source $HOME/.cargo/env
+          for PYBIN in /opt/python/cp3[6789]*/bin; do
+            "${PYBIN}/pip" install maturin
+            "${PYBIN}/maturin" build -m Cargo.toml -i "${PYBIN}/python" --release
+          done
+
+      # Debug print some directories.
+      - name: Debug Print Dirs
+        run: |
+          echo "ls working directory..."
+          ls
+          echo "ls target/wheels..."
+          ls target/wheels
+
+      # Upload target/wheels.
+      - name: Upload target/wheels
+        uses: actions/upload-artifact@v2
+        with:
+          name: macos-wheels
+          path: target/wheels
+
   windows-wheels-via-rust-stable:
     name: Windows wheels via Rust stable
     runs-on: windows-latest
@@ -139,12 +179,16 @@ jobs:
         with:
           name: windows-wheels
           path: target/wheels
-  
+
   upload-wheels-to-pip:
     # Only upload to pip if this is a commit on the main branch!
     if: github.ref == 'refs/heads/main'
     name: Upload Windows & Linux wheels to pip
-    needs: [manylinux-wheels-via-rust-stable, windows-wheels-via-rust-stable]
+    needs: [
+      manylinux-wheels-via-rust-stable,
+      windows-wheels-via-rust-stable,
+      macos-wheels-via-rust-stable
+    ]
     runs-on: ubuntu-latest
     environment: pypi_publishing_environment
     steps:
@@ -152,6 +196,10 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: manylinux-wheels
+      - name: Download macOS wheel artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: macos-wheels
       - name: Download Windows wheel artifacts
         uses: actions/download-artifact@v2
         with:

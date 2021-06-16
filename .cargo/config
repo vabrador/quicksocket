@@ -1,0 +1,11 @@
+# macOS support for pyo3. Via: https://pyo3.rs/v0.13.2/ as of 2021-06-16.
+[target.x86_64-apple-darwin]
+rustflags = [
+  "-C", "link-arg=-undefined",
+  "-C", "link-arg=dynamic_lookup",
+]
+[target.aarch64-apple-darwin]
+rustflags = [
+  "-C", "link-arg=-undefined",
+  "-C", "link-arg=dynamic_lookup",
+]
