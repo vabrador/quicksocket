@@ -5,21 +5,21 @@
 
 use futures_util::FutureExt;
 use pyo3::{prelude::*, wrap_pyfunction};
-use tungstenite::Message as WsMessage;
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 use crate::server::{self, consumer_state::{self}};
 use consumer_state as cs;
 
 /// Starts the websocket server.
 #[pyfunction]
-pub fn start_server() -> bool {
+pub fn start_server(port: u32) -> bool {
     // For now, start_server can only be called if the server is not already running.
     if is_server_running() {
       consumer_state::weakly_record_error("Server is already running, can't invoke start_server().".to_string());
       return false;
     }
 
-    let server_started = server::start().is_ok();
+    let server_started = server::start(port).is_ok();
     if !server_started { return false; }
 
     println!("Server started.");

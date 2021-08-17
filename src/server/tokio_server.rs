@@ -7,10 +7,11 @@ use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 ///
 /// This function launches a tokio runtime to handle most server functions. The function will return after the tokio runtime exits.
 pub fn main(
+  port: u32,
   ser_thread_alive_tx: watch::Sender::<bool>,
   cli_conn_tokio_tx: mpsc::Sender<String>,
-  ser_msg_tx: broadcast::Sender::<Vec<tungstenite::Message>>,
-  cli_msg_tx: mpsc::Sender::<tungstenite::Message>,
+  ser_msg_tx: broadcast::Sender::<Vec<tokio_tungstenite::tungstenite::Message>>,
+  cli_msg_tx: mpsc::Sender::<tokio_tungstenite::tungstenite::Message>,
   mut ser_req_shutdown_rx: watch::Receiver::<bool>
 ) -> Result<String, String> {
   // Start the tokio runtime for the server and launch the top-level server task.
@@ -24,10 +25,11 @@ pub fn main(
     let res = ser_thread_alive_tx.send(true);
     if res.is_err() { println!("Failed to set server alive."); return; }
 
-    // Bind to websocket on localhost port 50808.
-    let addr = "127.0.0.1:50808";
+    // Bind to websocket on localhost port 59994.
+    let addr = format!("127.0.0.1:{}", port);
+    println!("[quicksocket] Attempting to bind TcpListener at: {}", addr);
     let listener = TcpListener::bind(&addr).await;
-    if listener.is_err() { println!("Failed to bind TcpListener."); return; }
+    if listener.is_err() { println!("Failed to bind TcpListener. It's possible that port {} is already in use.", port); return; }
     let listener = listener.unwrap();
     //.expect("Failed to bind to address")
     println!("Listening on: {}", addr);
@@ -79,8 +81,8 @@ pub fn main(
 async fn handle_connection(
   _peer: SocketAddr,
   stream: TcpStream,
-  server_msg_rx: broadcast::Receiver<Vec<tungstenite::Message>>,
-  client_msg_tx: mpsc::Sender<tungstenite::Message>,
+  server_msg_rx: broadcast::Receiver<Vec<tokio_tungstenite::tungstenite::Message>>,
+  client_msg_tx: mpsc::Sender<tokio_tungstenite::tungstenite::Message>,
   ser_req_shutdown_rx: watch::Receiver::<bool>
 ) {
   let addr = stream.peer_addr();
@@ -95,29 +97,36 @@ async fn handle_connection(
     .expect("Error during the websocket handshake occurred");
 
   println!("[handle_connection] New websocket connection: {}", addr);
+
   
   // Split up the stream to a client reader and a client writer.
   let (ws_client_write, ws_client_read) = ws_stream.split();
 
+  // Create a channel between the tasks to handle a client-initiated shutdown handshake.
+  let (ws_client_req_shutdown_tx, ws_client_req_shutdown_rx) = watch::channel::<()>(());
+
   // Launch a task to handle sending messages from the server-side library consumer to the websocket client over ws_write.
   tokio::spawn(send_ws_client_messages(
-    server_msg_rx, ws_client_write, ser_req_shutdown_rx.clone()
+    server_msg_rx, ws_client_write, ser_req_shutdown_rx.clone(), ws_client_req_shutdown_rx
   ));
 
-  // Launch a task to handle receiving message from the websocket client over ws_read and buffering them for the server-side library consumer to drain and handle later.
+  // Launch a task to handle receiving messages from the websocket client over ws_read and buffering them for the server-side library consumer to drain and handle later.
   tokio::spawn(recv_ws_client_messages(
-    client_msg_tx, ws_client_read, ser_req_shutdown_rx
+    client_msg_tx, ws_client_read, ser_req_shutdown_rx, ws_client_req_shutdown_tx
   ));
 
   // Archived: For debugging purposes, we can create a simple message forwarder for the lifetime of the connection (bouncing messages from the websocket client back to them).
   // let (write, read) = ws_stream.split();
   // read.forward(write).await.expect("Failed to forward message");
+
+  println!("[handle_connection] Websocket connection handled.");
 }
 
 async fn send_ws_client_messages(
-  mut server_msg_rx: broadcast::Receiver<Vec<tungstenite::Message>>,
+  mut server_msg_rx: broadcast::Receiver<Vec<tokio_tungstenite::tungstenite::Message>>,
   mut ws_client_write: SplitSink<WebSocketStream<TcpStream>, Message>,
-  mut ser_req_shutdown_rx: watch::Receiver::<bool>
+  mut ser_req_shutdown_rx: watch::Receiver::<bool>,
+  mut ws_client_req_shutdown_rx: watch::Receiver::<()>
 ) {
   loop { tokio::select! {
     // Receive server messages and forward them to connected clients.
@@ -141,6 +150,16 @@ async fn send_ws_client_messages(
       }
     }}
 
+    // Receive a shutdown signal from the client receiver task, indicating the client sent a shutdown handshake.
+    _ = ws_client_req_shutdown_rx.changed() => {
+      println!("[send_ws_client_messages] Received shutdown signal from the client receiver task; the client wants to disconnect. Resolving the shutdown handshake.");
+      let res = ws_client_write.close().await;
+      if let Err(err) = res {
+        println!("[send_ws_client_messages] Error closing ws_client_write: {:?}", err);
+      }
+      break;
+    }
+
     // Receive an exit signal and shutdown.
     _ = ser_req_shutdown_rx.changed() => {
       if *ser_req_shutdown_rx.borrow() {
@@ -149,12 +168,14 @@ async fn send_ws_client_messages(
       }
     }
   }}
+  println!("[send_ws_client_messages] Client sender loop shutdown.")
 }
 
 async fn recv_ws_client_messages(
-  client_msg_tx: mpsc::Sender<tungstenite::Message>,
+  client_msg_tx: mpsc::Sender<tokio_tungstenite::tungstenite::Message>,
   mut ws_client_read: SplitStream<WebSocketStream<TcpStream>>,
-  mut ser_req_shutdown_rx: watch::Receiver::<bool>
+  mut ser_req_shutdown_rx: watch::Receiver::<bool>,
+  ws_client_req_shutdown_tx: watch::Sender::<()>
 ) {
   loop { tokio::select! {
     // Receive messages from connected clients and forward them to client message buffer.
@@ -167,7 +188,13 @@ async fn recv_ws_client_messages(
         println!("[recv_ws_client_messages] Error receiving msg from WS client: {:?}", err);
       }
       None => {
-        println!("[recv_ws_client_messages] None received from ws_client_read.next(), connection stream must be closed.");
+        println!("[recv_ws_client_messages] None received from ws_client_read.next(), connection stream must be closed. Sending notification to the sender task.");
+
+        // Send the shutdown signal to the sender-side task for this connection.
+        let conn_shutdown_res = ws_client_req_shutdown_tx.send(());
+        if let Err(err) = conn_shutdown_res {
+          println!("[recv_ws_client_messages] Error sending a shutdown signal to the sender-side task for the closed connection: {:?}", err)
+        }
         break;
       }
     }}
@@ -180,4 +207,5 @@ async fn recv_ws_client_messages(
       }
     }
   }}
+  println!("[recv_ws_client_messages] Client receiver loop shutdown.")
 }
