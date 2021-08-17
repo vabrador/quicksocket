@@ -33,6 +33,15 @@ jobs:
           toolchain: stable
           default: true
           override: true
+        
+      # Install Nox.
+      - name: Install Nox
+        # (Only need to run Nox with python 3.9, it will launch other pythons.)
+        run: |
+          source $HOME/.cargo/env
+          for PYBIN in /opt/python/cp3[9]*/bin; do
+            $PYBIN/python -m pip install nox
+          done
 
       # Insert steps here to install your other dependencies. Note that you're running inside of cent os 7, not ubuntu
       #
@@ -71,9 +80,14 @@ jobs:
           ls target/wheels
       
       # Run tests on all the supported/installed pythons.
-      - uses: excitedleigh/setup-nox@v2.0.0
-      - name: Run tests via Nox
-        run: nox
+      # # # - uses: excitedleigh/setup-nox@v2.0.0
+      - name: Run Nox
+        # (Only need to run Nox with python 3.9, it will launch other pythons.)
+        run: |
+          source $HOME/.cargo/env
+          for PYBIN in /opt/python/cp3[9]*/bin; do
+            $PYBIN/python -m nox
+          done
 
       # Upload target/wheels.
       - name: Upload target/wheels
@@ -94,15 +108,6 @@ jobs:
     runs-on: macos-10.15
     steps:
       - uses: actions/checkout@v1
-
-      # Install Rust.
-      - name: Install stable Rust toolchain
-        # # # run: curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
-          override: true
 
       # Install Pythons.
       - uses: actions/setup-python@v2
@@ -125,6 +130,22 @@ jobs:
           python-version: '3.9'
       - run: echo "PY_3_9=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
 
+      # Install nox.
+      - name: Install nox
+        # (Only need to run Nox with python 3.9, it will launch other pythons.)
+        run: |
+          echo "Install nox..."
+          $PY_3_9 -m pip install nox
+
+      # Install Rust.
+      - name: Install stable Rust toolchain
+        # # # run: curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
+
       # Build wheels.
       - name: Build wheels
         run: |
@@ -144,9 +165,10 @@ jobs:
           ls target/wheels
       
       # Run tests on all the supported/installed pythons.
-      - uses: excitedleigh/setup-nox@v2.0.0
-      - name: Run tests via Nox
-        run: nox
+      # # # - uses: excitedleigh/setup-nox@v2.0.0
+      - name: Run Nox
+        # (Only need to run Nox with python 3.9, it will launch other pythons.)
+        run: $PY_3_9 -m nox
 
       # Upload target/wheels.
       - name: Upload target/wheels
@@ -167,6 +189,36 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v1
+
+      # Install Pythons and store their executables into specific env vars.
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.6'
+      - run: echo "PY_3_6=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.7'
+      - run: echo "PY_3_7=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+      - run: echo "PY_3_8=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+      - run: echo "PY_3_9=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+      
+      # Run tests on all the supported/installed pythons.
+      # # # - uses: excitedleigh/setup-nox@v2.0.0
+      - name: Setup Nox
+        # (Only need to run Nox with python 3.9, it will launch other pythons.)
+        run: |
+          foreach ($PYTHON in @($env:PY_3_9)) {
+            .$PYTHON -m pip install nox
+          }
       
       # Attempt to cache OpenSSL.
       - name: Cache Win64 OpenSSL
@@ -193,27 +245,6 @@ jobs:
           default: true
           override: true
 
-      # Install Pythons and store their executables into specific env vars.
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.6'
-      - run: echo "PY_3_6=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
-
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.7'
-      - run: echo "PY_3_7=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
-
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.8'
-      - run: echo "PY_3_8=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
-
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
-      - run: echo "PY_3_9=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
-
       # Build wheels.
       - name: Build wheels
         run: |
@@ -226,9 +257,13 @@ jobs:
           }
       
       # Run tests on all the supported/installed pythons.
-      - uses: excitedleigh/setup-nox@v2.0.0
-      - name: Run tests via Nox
-        run: nox
+      # # # - uses: excitedleigh/setup-nox@v2.0.0
+      - name: Run Nox
+        # (Only need to run Nox with python 3.9, it will launch other pythons.)
+        run: |
+          foreach ($PYTHON in @($env:PY_3_9)) {
+            .$PYTHON -m nox
+          }
 
       # Upload wheels.
       - name: Upload target/wheels

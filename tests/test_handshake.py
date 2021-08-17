@@ -66,12 +66,16 @@ def test_connection():
   assert(server.is_running())
 
   # Run the asynchronous client and server handshake.
-  async def run_tasks():
-    cli_hsh_task = asyncio.create_task(client_handshake(port))
-    srv_hsh_task = asyncio.create_task(server_handshake(server))
+  # Passing around the event loop is very annoying, but necessary for Python 3.6 support.
+  async def run_tasks(loop):
+    cli_hsh_task = loop.create_task(client_handshake(port))
+    srv_hsh_task = loop.create_task(server_handshake(server))
     await cli_hsh_task
     await srv_hsh_task
-  asyncio.run(run_tasks())
+  # asyncio.run(run_tasks()) <-- Python 3.7 and up
+  # For Python 3.6 support:
+  loop = asyncio.get_event_loop()
+  loop.run_until_complete(run_tasks(loop))
   print("[test_handshake] [test_connection] Done running tasks.")
 
   # Stop the server and confirm it stops.
