@@ -8,7 +8,7 @@ use std::{sync::{RwLock}};
 use tokio::sync::{broadcast, mpsc, watch};
 
 type CS<T> = RwLock<Option<T>>;
-type WsMessage = tungstenite::Message;
+type WsMessage = tokio_tungstenite::tungstenite::Message;
 
 // Lazy Static
 // -----------
