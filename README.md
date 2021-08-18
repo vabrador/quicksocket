@@ -2,6 +2,7 @@
 # quicksocket
 
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Apache v2 licensed](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Actions Status](https://github.com/nickjbenson/quicksocket/workflows/Build/badge.svg)](https://github.com/nickjbenson/quicksocket/actions)
 [![PyPI](https://img.shields.io/pypi/v/quicksocket.svg?style=flat)](https://pypi.org/project/quicksocket/)
 [![Crates.io](https://img.shields.io/crates/v/quicksocket.svg?style=flat)](https://crates.io/crates/quicksocket)
