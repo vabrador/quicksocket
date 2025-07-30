@@ -69,7 +69,7 @@ If you just want a raw `.pyd` or similar python native module file for your OS, 
 cargo build --release
 ```
 
-There's CI for Windows, macOS, and Linux for Pythons 3.6 through 3.9. Check out the Actions tab.
+There's CI for Windows, macOS, and Linux for Pythons 3.6 through 3.9. Check out the Actions tab. (Actions removed due to archival, 2025-07-29)
 
 ## Ubuntu
 
