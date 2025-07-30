@@ -1,6 +1,8 @@
 
 # quicksocket
 
+!!! This repository is archived as of 2025-07-29. Use at your own risk.
+
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Apache v2 licensed](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Actions Status](https://github.com/nickjbenson/quicksocket/workflows/Build/badge.svg)](https://github.com/nickjbenson/quicksocket/actions)
@@ -14,7 +16,7 @@ More stable as of 1.0.0, but still feature-light. You only get one server (need 
 ```sh
 pip install quicksocket
 ```
-## Quick Start for Quicksocket ##
+## Quick Start for Quicksocket
 
 `quicksocket.server.Server` provides type annotations for the otherwise static methods available directly from the `quicksocket` module.
 
@@ -67,7 +69,7 @@ If you just want a raw `.pyd` or similar python native module file for your OS, 
 cargo build --release
 ```
 
-There's CI for Windows, macOS, and Linux for Pythons 3.6 through 3.9. Check out the Actions tab.
+There's CI for Windows, macOS, and Linux for Pythons 3.6 through 3.9. Check out the Actions tab. (Actions removed due to archival, 2025-07-29)
 
 ## Ubuntu
 
@@ -79,9 +81,9 @@ sudo apt-get install libpython3-dev
 
 If you encounter errors building `pyo3`, you may need to check whether it can find your python and any related python dev dependencies: https://pyo3.rs/v0.10.1/building_and_distribution.html
 
-# Older Build Instructions #
+# Older Build Instructions
 
-## Targeting builds to specific Python versions ##
+## Targeting builds to specific Python versions
 
 This only pertains to building via `cargo`. `maturin` is probably more reliable.
 

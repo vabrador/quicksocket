@@ -1,316 +1,319 @@
-# Initial workflow for building manylinux wheel using `maturin` forked from:
-# https://github.com/konstin/complex-manylinux-maturin-dockers
 
-name: Build
+# Workflows ARCHIVED 2025-07-29
+#
+# # Initial workflow for building manylinux wheel using `maturin` forked from:
+# # https://github.com/konstin/complex-manylinux-maturin-dockers
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
+# name: Build
 
-jobs:
+# on:
+#   push:
+#     branches:
+#       - main
+#   pull_request:
 
-  # ============ #
-  # Linux Wheels #
-  # ============ #
-  #
-  # Build and test Linux wheels.
-  #
-  manylinux-wheels-via-rust-stable:
-    name: manylinux wheels via Rust stable
-    runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux2014_x86_64
-    steps:
-      # Checkout the repo.
-      - uses: actions/checkout@v1
+# jobs:
 
-      # Install Rust.
-      - name: Install stable Rust toolchain
-        # # # run: curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
-          override: true
+#   # ============ #
+#   # Linux Wheels #
+#   # ============ #
+#   #
+#   # Build and test Linux wheels.
+#   #
+#   manylinux-wheels-via-rust-stable:
+#     name: manylinux wheels via Rust stable
+#     runs-on: ubuntu-latest
+#     container: quay.io/pypa/manylinux2014_x86_64
+#     steps:
+#       # Checkout the repo.
+#       - uses: actions/checkout@v1
+
+#       # Install Rust.
+#       - name: Install stable Rust toolchain
+#         # # # run: curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+#         uses: actions-rs/toolchain@v1
+#         with:
+#           toolchain: stable
+#           default: true
+#           override: true
         
-      # Install Nox.
-      - name: Install Nox
-        # (Only need to run Nox with python 3.9, it will launch other pythons.)
-        run: |
-          source $HOME/.cargo/env
-          for PYBIN in /opt/python/cp3[9]*/bin; do
-            $PYBIN/python -m pip install nox
-          done
+#       # Install Nox.
+#       - name: Install Nox
+#         # (Only need to run Nox with python 3.9, it will launch other pythons.)
+#         run: |
+#           source $HOME/.cargo/env
+#           for PYBIN in /opt/python/cp3[9]*/bin; do
+#             $PYBIN/python -m pip install nox
+#           done
 
-      # Insert steps here to install your other dependencies. Note that you're running inside of cent os 7, not ubuntu
-      #
-      # For example:
-      # - name: Installing custom dependency
-      #   run: echo "Installing custom dependency"
-      - name: Install openssl-devel
-        run: yum install -y openssl-devel
+#       # Insert steps here to install your other dependencies. Note that you're running inside of cent os 7, not ubuntu
+#       #
+#       # For example:
+#       # - name: Installing custom dependency
+#       #   run: echo "Installing custom dependency"
+#       - name: Install openssl-devel
+#         run: yum install -y openssl-devel
         
-      # Build the wheels.
-      - name: Build wheels
-        run: |
-          source $HOME/.cargo/env
-          for PYBIN in /opt/python/cp3[6789]*/bin; do
-            "${PYBIN}/pip" install maturin
-            "${PYBIN}/maturin" build -m Cargo.toml -i "${PYBIN}/python" --release --manylinux 2014
-          done
+#       # Build the wheels.
+#       - name: Build wheels
+#         run: |
+#           source $HOME/.cargo/env
+#           for PYBIN in /opt/python/cp3[6789]*/bin; do
+#             "${PYBIN}/pip" install maturin
+#             "${PYBIN}/maturin" build -m Cargo.toml -i "${PYBIN}/python" --release --manylinux 2014
+#           done
 
-      # Auditwheel repair.
-      #
-      # Auditwheel isn't generally necessary. This is only shown as reference for cases where you link external libraries, in which case you have to set manylinux to off and then use `auditwheel repair`.
-      #
-      # For example:
-      # - name: Auditwheel repair
-      #   run: |
-      #     for wheel in nightly-only/target/wheels/*.whl; do
-      #         auditwheel repair "${wheel}"
-      #     done
+#       # Auditwheel repair.
+#       #
+#       # Auditwheel isn't generally necessary. This is only shown as reference for cases where you link external libraries, in which case you have to set manylinux to off and then use `auditwheel repair`.
+#       #
+#       # For example:
+#       # - name: Auditwheel repair
+#       #   run: |
+#       #     for wheel in nightly-only/target/wheels/*.whl; do
+#       #         auditwheel repair "${wheel}"
+#       #     done
 
-      # Debug print some directories.
-      - name: Debug Print Dirs
-        run: |
-          echo "ls working directory..."
-          ls
-          echo "ls target/wheels..."
-          ls target/wheels
+#       # Debug print some directories.
+#       - name: Debug Print Dirs
+#         run: |
+#           echo "ls working directory..."
+#           ls
+#           echo "ls target/wheels..."
+#           ls target/wheels
       
-      # Run tests on all the supported/installed pythons.
-      # # # - uses: excitedleigh/setup-nox@v2.0.0
-      - name: Run Nox
-        # (Only need to run Nox with python 3.9, it will launch other pythons.)
-        run: |
-          source $HOME/.cargo/env
-          for PYBIN in /opt/python/cp3[9]*/bin; do
-            $PYBIN/python -m nox
-          done
+#       # Run tests on all the supported/installed pythons.
+#       # # # - uses: excitedleigh/setup-nox@v2.0.0
+#       - name: Run Nox
+#         # (Only need to run Nox with python 3.9, it will launch other pythons.)
+#         run: |
+#           source $HOME/.cargo/env
+#           for PYBIN in /opt/python/cp3[9]*/bin; do
+#             $PYBIN/python -m nox
+#           done
 
-      # Upload target/wheels.
-      - name: Upload target/wheels
-        uses: actions/upload-artifact@v2
-        with:
-          name: manylinux-wheels
-          path: target/wheels
+#       # Upload target/wheels.
+#       - name: Upload target/wheels
+#         uses: actions/upload-artifact@v2
+#         with:
+#           name: manylinux-wheels
+#           path: target/wheels
 
-  # ============ #
-  # macOS Wheels #
-  # ============ #
-  #
-  # Build and test macOS wheels.
-  #
-  macos-wheels-via-rust-stable:
-    name: macOS wheels via Rust stable
-    # For now we build for macOS Catalina (macos-10.15) - Big Sur maybe later? -2021-06-16
-    runs-on: macos-10.15
-    steps:
-      - uses: actions/checkout@v1
+#   # ============ #
+#   # macOS Wheels #
+#   # ============ #
+#   #
+#   # Build and test macOS wheels.
+#   #
+#   macos-wheels-via-rust-stable:
+#     name: macOS wheels via Rust stable
+#     # For now we build for macOS Catalina (macos-10.15) - Big Sur maybe later? -2021-06-16
+#     runs-on: macos-10.15
+#     steps:
+#       - uses: actions/checkout@v1
 
-      # Install Pythons.
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.6'
-      - run: echo "PY_3_6=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+#       # Install Pythons.
+#       - uses: actions/setup-python@v2
+#         with:
+#           python-version: '3.6'
+#       - run: echo "PY_3_6=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
 
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.7'
-      - run: echo "PY_3_7=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+#       - uses: actions/setup-python@v2
+#         with:
+#           python-version: '3.7'
+#       - run: echo "PY_3_7=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
 
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.8'
-      - run: echo "PY_3_8=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+#       - uses: actions/setup-python@v2
+#         with:
+#           python-version: '3.8'
+#       - run: echo "PY_3_8=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
 
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
-      - run: echo "PY_3_9=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
+#       - uses: actions/setup-python@v2
+#         with:
+#           python-version: '3.9'
+#       - run: echo "PY_3_9=$(python -c "import sys; print(sys.executable)")" >> $GITHUB_ENV
 
-      # Install nox.
-      - name: Install nox
-        # (Only need to run Nox with python 3.9, it will launch other pythons.)
-        run: |
-          echo "Install nox..."
-          $PY_3_9 -m pip install nox
+#       # Install nox.
+#       - name: Install nox
+#         # (Only need to run Nox with python 3.9, it will launch other pythons.)
+#         run: |
+#           echo "Install nox..."
+#           $PY_3_9 -m pip install nox
 
-      # Install Rust.
-      - name: Install stable Rust toolchain
-        # # # run: curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
-          override: true
+#       # Install Rust.
+#       - name: Install stable Rust toolchain
+#         # # # run: curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+#         uses: actions-rs/toolchain@v1
+#         with:
+#           toolchain: stable
+#           default: true
+#           override: true
 
-      # Build wheels.
-      - name: Build wheels
-        run: |
-          for PYTHON in $PY_3_6 $PY_3_7 $PY_3_8 $PY_3_9
-          do
-            echo "Building with $PYTHON..."
-            $PYTHON -m pip install maturin
-            maturin build --release -i $PYTHON
-          done
+#       # Build wheels.
+#       - name: Build wheels
+#         run: |
+#           for PYTHON in $PY_3_6 $PY_3_7 $PY_3_8 $PY_3_9
+#           do
+#             echo "Building with $PYTHON..."
+#             $PYTHON -m pip install maturin
+#             maturin build --release -i $PYTHON
+#           done
 
-      # Debug print some directories.
-      - name: Debug Print Dirs
-        run: |
-          echo "ls working directory..."
-          ls
-          echo "ls target/wheels..."
-          ls target/wheels
+#       # Debug print some directories.
+#       - name: Debug Print Dirs
+#         run: |
+#           echo "ls working directory..."
+#           ls
+#           echo "ls target/wheels..."
+#           ls target/wheels
       
-      # Run tests on all the supported/installed pythons.
-      # # # - uses: excitedleigh/setup-nox@v2.0.0
-      - name: Run Nox
-        # (Only need to run Nox with python 3.9, it will launch other pythons.)
-        run: $PY_3_9 -m nox
+#       # Run tests on all the supported/installed pythons.
+#       # # # - uses: excitedleigh/setup-nox@v2.0.0
+#       - name: Run Nox
+#         # (Only need to run Nox with python 3.9, it will launch other pythons.)
+#         run: $PY_3_9 -m nox
 
-      # Upload target/wheels.
-      - name: Upload target/wheels
-        uses: actions/upload-artifact@v2
-        with:
-          name: macos-wheels
-          path: target/wheels
+#       # Upload target/wheels.
+#       - name: Upload target/wheels
+#         uses: actions/upload-artifact@v2
+#         with:
+#           name: macos-wheels
+#           path: target/wheels
 
-  # ============== #
-  # Windows Wheels #
-  # ============== #
-  #
-  # Build and test Windows wheels.
-  #
-  windows-wheels-via-rust-stable:
-    name: Windows wheels via Rust stable
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v1
+#   # ============== #
+#   # Windows Wheels #
+#   # ============== #
+#   #
+#   # Build and test Windows wheels.
+#   #
+#   windows-wheels-via-rust-stable:
+#     name: Windows wheels via Rust stable
+#     runs-on: windows-latest
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v1
 
-      # Install Pythons and store their executables into specific env vars.
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.6'
-      - run: echo "PY_3_6=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+#       # Install Pythons and store their executables into specific env vars.
+#       - uses: actions/setup-python@v2
+#         with:
+#           python-version: '3.6'
+#       - run: echo "PY_3_6=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
 
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.7'
-      - run: echo "PY_3_7=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+#       - uses: actions/setup-python@v2
+#         with:
+#           python-version: '3.7'
+#       - run: echo "PY_3_7=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
 
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.8'
-      - run: echo "PY_3_8=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+#       - uses: actions/setup-python@v2
+#         with:
+#           python-version: '3.8'
+#       - run: echo "PY_3_8=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
 
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
-      - run: echo "PY_3_9=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
+#       - uses: actions/setup-python@v2
+#         with:
+#           python-version: '3.9'
+#       - run: echo "PY_3_9=$(python -c "import sys; print(sys.executable)")" >> $env:GITHUB_ENV
       
-      # Run tests on all the supported/installed pythons.
-      # # # - uses: excitedleigh/setup-nox@v2.0.0
-      - name: Setup Nox
-        # (Only need to run Nox with python 3.9, it will launch other pythons.)
-        run: |
-          foreach ($PYTHON in @($env:PY_3_9)) {
-            .$PYTHON -m pip install nox
-          }
+#       # Run tests on all the supported/installed pythons.
+#       # # # - uses: excitedleigh/setup-nox@v2.0.0
+#       - name: Setup Nox
+#         # (Only need to run Nox with python 3.9, it will launch other pythons.)
+#         run: |
+#           foreach ($PYTHON in @($env:PY_3_9)) {
+#             .$PYTHON -m pip install nox
+#           }
       
-      # Attempt to cache OpenSSL.
-      - name: Cache Win64 OpenSSL
-        id: cache-win64-openssl
-        uses: actions/cache@v2
-        with:
-          path: 'C:\Program Files\OpenSSL-Win64'
-          key: win64-openssl
-          # key: ${{ runner.os }}-openssl
+#       # Attempt to cache OpenSSL.
+#       - name: Cache Win64 OpenSSL
+#         id: cache-win64-openssl
+#         uses: actions/cache@v2
+#         with:
+#           path: 'C:\Program Files\OpenSSL-Win64'
+#           key: win64-openssl
+#           # key: ${{ runner.os }}-openssl
 
-      # Install OpenSSL if we don't have it cached.
-      - name: Install OpenSSL via chocolatey (line-heavy output, causes page lag)
-        if: steps.cache-win64-openssl.outputs.cache-hit != 'true'
-        uses: nickjbenson/ghaction-chocolatey@master
-        with:
-          args: install openssl -y -r
-      # (It should now cache at C:\Program Files\OpenSSL-Win64)
+#       # Install OpenSSL if we don't have it cached.
+#       - name: Install OpenSSL via chocolatey (line-heavy output, causes page lag)
+#         if: steps.cache-win64-openssl.outputs.cache-hit != 'true'
+#         uses: nickjbenson/ghaction-chocolatey@master
+#         with:
+#           args: install openssl -y -r
+#       # (It should now cache at C:\Program Files\OpenSSL-Win64)
 
-      # Install Rust.
-      - name: Install stable Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
-          override: true
+#       # Install Rust.
+#       - name: Install stable Rust toolchain
+#         uses: actions-rs/toolchain@v1
+#         with:
+#           toolchain: stable
+#           default: true
+#           override: true
 
-      # Build wheels.
-      - name: Build wheels
-        run: |
-          # Note: Manually ref install dir for OpenSSL
-          $Env:OPENSSL_DIR='C:\Program Files\OpenSSL-Win64'
-          foreach ($PYTHON in @($env:PY_3_6, $env:PY_3_7, $env:PY_3_8, $env:PY_3_9)) {
-            echo "Building with $($PYTHON)..."
-            .$PYTHON -m pip install maturin
-            maturin build --release -i $PYTHON
-          }
+#       # Build wheels.
+#       - name: Build wheels
+#         run: |
+#           # Note: Manually ref install dir for OpenSSL
+#           $Env:OPENSSL_DIR='C:\Program Files\OpenSSL-Win64'
+#           foreach ($PYTHON in @($env:PY_3_6, $env:PY_3_7, $env:PY_3_8, $env:PY_3_9)) {
+#             echo "Building with $($PYTHON)..."
+#             .$PYTHON -m pip install maturin
+#             maturin build --release -i $PYTHON
+#           }
       
-      # Run tests on all the supported/installed pythons.
-      # # # - uses: excitedleigh/setup-nox@v2.0.0
-      - name: Run Nox
-        # (Only need to run Nox with python 3.9, it will launch other pythons.)
-        run: |
-          foreach ($PYTHON in @($env:PY_3_9)) {
-            .$PYTHON -m nox
-          }
+#       # Run tests on all the supported/installed pythons.
+#       # # # - uses: excitedleigh/setup-nox@v2.0.0
+#       - name: Run Nox
+#         # (Only need to run Nox with python 3.9, it will launch other pythons.)
+#         run: |
+#           foreach ($PYTHON in @($env:PY_3_9)) {
+#             .$PYTHON -m nox
+#           }
 
-      # Upload wheels.
-      - name: Upload target/wheels
-        uses: actions/upload-artifact@v1
-        with:
-          name: windows-wheels
-          path: target/wheels
+#       # Upload wheels.
+#       - name: Upload target/wheels
+#         uses: actions/upload-artifact@v1
+#         with:
+#           name: windows-wheels
+#           path: target/wheels
 
-  # ===================== #
-  # Upload Wheels to PyPI #
-  # ===================== #
-  #
-  upload-wheels-to-pip:
-    # Only upload to pip if this is a commit on the main branch!
-    if: github.ref == 'refs/heads/main'
-    name: Upload Windows, macOS, and Linux wheels to pip
-    needs: [
-      manylinux-wheels-via-rust-stable,
-      windows-wheels-via-rust-stable,
-      macos-wheels-via-rust-stable
-    ]
-    runs-on: ubuntu-latest
-    environment: pypi_publishing_environment
-    steps:
-      - name: Download Linux wheel artifacts
-        uses: actions/download-artifact@v2
-        with:
-          name: manylinux-wheels
-      - name: Download macOS wheel artifacts
-        uses: actions/download-artifact@v2
-        with:
-          name: macos-wheels
-      - name: Download Windows wheel artifacts
-        uses: actions/download-artifact@v2
-        with:
-          name: windows-wheels
-      - name: Setup Python 3.9 & pip
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
-      - name: Upload to pip
-        env:
-          MATURIN_PIP_TOKEN: ${{ secrets.MATURIN_PIP_TOKEN }}
-        run: |
-          pip install maturin
-          for WHEEL in *.whl
-          do
-            echo "Attempting to upload $(echo $WHEEL)"
-            maturin upload --skip-existing -u __token__ -p $MATURIN_PIP_TOKEN $WHEEL
-          done
+#   # ===================== #
+#   # Upload Wheels to PyPI #
+#   # ===================== #
+#   #
+#   upload-wheels-to-pip:
+#     # Only upload to pip if this is a commit on the main branch!
+#     if: github.ref == 'refs/heads/main'
+#     name: Upload Windows, macOS, and Linux wheels to pip
+#     needs: [
+#       manylinux-wheels-via-rust-stable,
+#       windows-wheels-via-rust-stable,
+#       macos-wheels-via-rust-stable
+#     ]
+#     runs-on: ubuntu-latest
+#     environment: pypi_publishing_environment
+#     steps:
+#       - name: Download Linux wheel artifacts
+#         uses: actions/download-artifact@v2
+#         with:
+#           name: manylinux-wheels
+#       - name: Download macOS wheel artifacts
+#         uses: actions/download-artifact@v2
+#         with:
+#           name: macos-wheels
+#       - name: Download Windows wheel artifacts
+#         uses: actions/download-artifact@v2
+#         with:
+#           name: windows-wheels
+#       - name: Setup Python 3.9 & pip
+#         uses: actions/setup-python@v2
+#         with:
+#           python-version: '3.9'
+#       - name: Upload to pip
+#         env:
+#           MATURIN_PIP_TOKEN: ${{ secrets.MATURIN_PIP_TOKEN }}
+#         run: |
+#           pip install maturin
+#           for WHEEL in *.whl
+#           do
+#             echo "Attempting to upload $(echo $WHEEL)"
+#             maturin upload --skip-existing -u __token__ -p $MATURIN_PIP_TOKEN $WHEEL
+#           done
